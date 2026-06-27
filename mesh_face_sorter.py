@@ -662,14 +662,10 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             return
 
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
-        # 三列布局（左→右）：
-        #   名称（弹性，占大部分）｜ 面数（固定窄列，右对齐）｜ 控制按钮（固定，贴最右）
-        # 按钮用纯图标，宽度由图标决定，天然固定；面数右对齐让数字贴齐按钮左侧
+        # 布局：名称（左侧弹性，占大部分） | 面数+按钮（右侧紧凑组，整体右对齐贴边）
+        # 右侧用子 row + alignment='RIGHT' 让按钮真正贴右边缘，面数紧贴按钮左侧
         MAX_DISPLAY = 500
-        # split 比例（基于剩余空间递推）：
-        #   名称 62% → 面数 占剩余 38% 的 40% ≈ 整体 15% → 按钮 剩 23%
-        NAME_FACTOR = 0.62
-        COUNT_FACTOR = 0.40   # 面数占"名称之后剩余空间"的 40%
+        NAME_FACTOR = 0.70   # 名称占 70%，剩余 30% 给"面数+按钮"右侧组
 
         box = layout.box()
         box.enabled = not is_scanning
@@ -677,91 +673,75 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 
         sort_icon = 'SORT_DESC' if descending else 'SORT_ASC'
 
-        # 表头（与数据行使用相同的 split 比例，保证列边对齐）
+        # 表头（与数据行同结构，保证列边对齐）
         header = col.row(align=True)
         h_name = header.split(factor=NAME_FACTOR, align=True)
         h_name.alignment = 'LEFT'
         h_name.label(text="物体名称", icon=sort_icon)
-        h_count = header.split(factor=COUNT_FACTOR, align=True)
-        h_count.alignment = 'RIGHT'
+        h_right = header.row(align=True)
+        h_right.alignment = 'RIGHT'
         if sort_by == 'FACES':
-            h_count.label(text="面数*")
+            h_right.label(text="面数*  ")
         elif sort_by == 'VERTS':
-            h_count.label(text="顶点*")
+            h_right.label(text="顶点*  ")
         else:
-            h_count.label(text="三角面*")
-        # 按钮列表头：右对齐，与数据行按钮对齐
-        header.alignment = 'RIGHT'
-        header.label(text="", icon='HIDE_OFF')
-        header.label(text="", icon='MOD_DECIM')
-        header.label(text="", icon='TRASH')
+            h_right.label(text="三角面*  ")
 
         col.separator()
 
         display_stats = stats[:MAX_DISPLAY]
         for s in display_stats:
             # 实时读取选中/隐藏状态（缓存只用于排序与计数，状态实时刷新）
-            # 用 try/except 防止缓存中的 object 引用已失效（被删除等）
             try:
                 live_obj = s["object"]
                 is_selected = live_obj.select_get()
                 is_hidden = live_obj.hide_get()
             except ReferenceError:
-                # 物体已被删除，跳过这一行（下次刷新会彻底清除）
                 continue
 
             row = col.row(align=True)
-            # 选中行高亮
-            row.active = is_selected
+            # 注意：不用 row.active 做高亮（active=False 会变灰禁用，不是高亮）
+            # 选中行通过图标 + 前缀 + emboss 区分
 
-            # 名称列（弹性宽度，左对齐；过长按显示宽度截断）
+            # 左侧：名称（弹性占大部分）
             name_col = row.split(factor=NAME_FACTOR, align=True)
             name_col.alignment = 'LEFT'
-            display_name = _truncate_name(s["name"])
-            if is_selected:
-                display_name = "▶ " + display_name
+            display_name = _truncate_name(s["name"], max_width=40)
             op_name = name_col.operator(
                 "mesh_face_sorter.select_object",
-                text=display_name,
+                text=("▶ " + display_name) if is_selected else display_name,
                 icon='OBJECT_DATA' if is_selected else 'MESH_DATA',
-                emboss=is_selected,
+                emboss=is_selected,   # 选中时有按钮边框，未选中时纯文字感
             )
             op_name.object_name = s["name"]
 
-            # 面数列（固定窄列，右对齐让数字贴齐按钮左侧）
-            count_col = row.split(factor=COUNT_FACTOR, align=True)
-            count_col.alignment = 'RIGHT'
+            # 右侧：面数 + 按钮组（紧凑排列，整体右对齐贴右边）
+            right = row.row(align=True)
+            right.alignment = 'RIGHT'
             if sort_by == 'FACES':
-                count_col.label(text=format_number(s["faces"]))
+                right.label(text=format_number(s["faces"]))
             elif sort_by == 'VERTS':
-                count_col.label(text=format_number(s["vertices"]))
+                right.label(text=format_number(s["vertices"]))
             else:
-                count_col.label(text=format_number(s["tris"]))
-
-            # 控制按钮列（贴最右；纯图标按钮宽度天然固定）
-            row.alignment = 'RIGHT'
-            op_iso = row.operator(
+                right.label(text=format_number(s["tris"]))
+            right.separator(factor=0.5)   # 面数与按钮间留小间距
+            op_iso = right.operator(
                 "mesh_face_sorter.isolate",
                 text="",
                 icon='HIDE_OFF' if not is_hidden else 'HIDE_ON',
-                emboss=True,
             )
             op_iso.object_name = s["name"]
-
-            op_dec = row.operator(
+            op_dec = right.operator(
                 "mesh_face_sorter.add_decimate_to_object",
                 text="",
                 icon='MOD_DECIM',
-                emboss=True,
             )
             op_dec.object_name = s["name"]
             op_dec.ratio = 0.5
-
-            op_del = row.operator(
+            op_del = right.operator(
                 "mesh_face_sorter.delete_object",
                 text="",
                 icon='TRASH',
-                emboss=True,
             )
             op_del.object_name = s["name"]
 
