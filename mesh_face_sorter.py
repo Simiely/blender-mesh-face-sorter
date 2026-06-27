@@ -4,7 +4,7 @@ bl_info = {
     "version": (1, 5, 1),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
-    "description": "按面数/顶点/三角面排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、一键加简面修改器（手动刷新 + 进度提示）",
+    "description": "按面数/顶点/三角面排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、一键加减面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/mesh-face-sorter",
     "category": "Mesh",
@@ -439,7 +439,7 @@ def add_decimate_to_object(obj, ratio=0.5):
 
 class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate"
-    bl_label = "一键添加简面修改器"
+    bl_label = "一键添加减面修改器"
     bl_description = "给当前选中的所有网格体添加 Decimate 修改器（Collapse 模式）"
 
     ratio: bpy.props.FloatProperty(
@@ -462,7 +462,7 @@ class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
                 added += 1
             else:
                 skipped += 1
-        msg = f"已添加简面修改器：{added} 个物体"
+        msg = f"已添加减面修改器：{added} 个物体"
         if skipped:
             msg += f"（跳过 {skipped} 个已存在）"
         self.report({'INFO'}, msg)
@@ -471,7 +471,7 @@ class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
 
 class MESH_OT_FaceSortAddDecimateToObject(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate_to_object"
-    bl_label = "添加简面"
+    bl_label = "添加减面"
     bl_description = "给该物体添加 Decimate 修改器（无需先选中）"
 
     object_name: bpy.props.StringProperty()
@@ -484,9 +484,55 @@ class MESH_OT_FaceSortAddDecimateToObject(bpy.types.Operator):
             return {'CANCELLED'}
         ok, _ = add_decimate_to_object(obj, self.ratio)
         if ok:
-            self.report({'INFO'}, f"已添加简面修改器：{obj.name}")
+            self.report({'INFO'}, f"已添加减面修改器：{obj.name}")
         else:
-            self.report({'INFO'}, f"已存在简面修改器，跳过：{obj.name}")
+            self.report({'INFO'}, f"已存在减面修改器，跳过：{obj.name}")
+        return {'FINISHED'}
+
+
+# -----------------------------------------------------------------------------
+# Operators - 应用减面修改器
+# -----------------------------------------------------------------------------
+
+
+class MESH_OT_FaceSortApplyDecimate(bpy.types.Operator):
+    """应用当前选中网格体的减面修改器"""
+    bl_idname = "mesh_face_sorter.apply_decimate"
+    bl_label = "应用减面修改器"
+    bl_description = "将选中网格体的 Decimate 修改器应用到模型上（不可逆，请确认）"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        selected = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected:
+            self.report({'WARNING'}, "请先选中至少一个网格体")
+            return {'CANCELLED'}
+
+        applied = 0
+        skipped = 0
+        original_active = context.view_layer.objects.active
+
+        for obj in selected:
+            mod = obj.modifiers.get(DECIMATE_MODIFIER_NAME)
+            if not mod or mod.type != 'DECIMATE':
+                skipped += 1
+                continue
+            context.view_layer.objects.active = obj
+            try:
+                bpy.ops.object.modifier_apply(modifier=DECIMATE_MODIFIER_NAME)
+                applied += 1
+            except Exception:
+                skipped += 1
+
+        # 恢复原始 active
+        if original_active and original_active.name in context.scene.objects:
+            context.view_layer.objects.active = original_active
+
+        msg = f"已应用 {applied} 个减面修改器"
+        if skipped:
+            msg += f"（跳过 {skipped} 个）"
+        self.report({'INFO'}, msg)
+        _Cache.invalidate()
         return {'FINISHED'}
 
 
@@ -641,7 +687,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.enabled = not is_scanning
         row.operator("mesh_face_sorter.export_md", icon='EXPORT')
 
-        # 一键添加简面修改器
+        # 一键添加减面修改器
         layout.separator()
         row = layout.row()
         row.enabled = not is_scanning
@@ -652,10 +698,15 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.enabled = not is_scanning
         op = row.operator(
             "mesh_face_sorter.add_decimate",
-            text="一键添加简面修改器",
+            text="一键添加减面修改器",
             icon='MOD_DECIM',
         )
         op.ratio = scene.mesh_face_sorter_decimate_ratio
+        row.operator(
+            "mesh_face_sorter.apply_decimate",
+            text="应用减面",
+            icon='CHECKMARK',
+        )
 
         layout.separator()
 
@@ -778,6 +829,7 @@ classes = (
     MESH_OT_FaceSortExportMd,
     MESH_OT_FaceSortAddDecimate,
     MESH_OT_FaceSortAddDecimateToObject,
+    MESH_OT_FaceSortApplyDecimate,
     MESH_OT_FaceSortPurgeOrphanData,
     MESH_PT_FaceSortPanel,
 )
@@ -800,7 +852,7 @@ def register():
         default=True,
     )
     bpy.types.Scene.mesh_face_sorter_decimate_ratio = bpy.props.FloatProperty(
-        name="简面保留比例",
+        name="减面保留比例",
         description="Decimate 修改器保留的面数比例（0.0~1.0）",
         default=0.5,
         min=0.001,
