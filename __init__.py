@@ -1,9 +1,9 @@
 bl_info = {
-    "name": "Mesh Face Sorter",
+    "name": "网格排序器 Mesh Face Sorter",
     "author": "Simiely",
     "version": (1, 4, 0),
     "blender": (3, 0, 0),
-    "location": "View3D > Sidebar > Mesh Sorter",
+    "location": "3D视图 > 侧边栏(N) > 网格排序器",
     "description": "按面数/顶点/三角面排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、一键加简面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/mesh-face-sorter",
@@ -509,7 +509,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
     bl_idname = "MESH_PT_FaceSortPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Mesh Sorter'
+    bl_category = '网格排序器'
 
     def draw(self, context):
         layout = self.layout
