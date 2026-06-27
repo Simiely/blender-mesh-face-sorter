@@ -4,7 +4,7 @@ bl_info = {
     "version": (1, 5, 1),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
-    "description": "按面数/顶点排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
+    "description": "按面数/顶点/存储大小排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/mesh-face-sorter",
     "category": "Mesh",
@@ -62,6 +62,7 @@ def _scan_meshes(with_progress=False, on_progress=None):
                 "faces": len(mesh.polygons),
                 "vertices": len(mesh.vertices),
                 "edges": len(mesh.edges),
+                "size": _estimate_mesh_size(mesh),
                 "selected": obj.select_get(),
                 "visible": obj.visible_get(),
                 "hidden": obj.hide_get(),
@@ -144,11 +145,30 @@ _ScanStatus.idle()
 _SORT_KEY_MAP = {
     'FACES': "faces",
     'VERTS': "vertices",
+    'SIZE': "size",
 }
 _SORT_LABELS = {
     'FACES': "面数",
     'VERTS': "顶点数",
+    'SIZE': "存储大小",
 }
+
+
+def _estimate_mesh_size(mesh):
+    """估算网格体内存占用（字节）。
+    基于顶点、边、面、循环、UV、顶点色等数据量估算。
+    实际内存占用可能因 Blender 内部结构对齐等因素略有差异。
+    """
+    size = 0
+    size += len(mesh.vertices) * 24   # 位置 + 法线
+    size += len(mesh.edges) * 8       # 2 个顶点索引
+    size += len(mesh.polygons) * 8    # loop_start + loop_total
+    size += len(mesh.loops) * 8       # vertex_index + edge_index
+    for uv_layer in mesh.uv_layers:
+        size += len(uv_layer.data) * 8    # UV 坐标
+    for vc_layer in mesh.color_attributes:
+        size += len(vc_layer.data) * 16   # RGBA
+    return size
 
 
 def format_number(n):
@@ -157,6 +177,16 @@ def format_number(n):
     if n >= 1000:
         return f"{n / 1000:.1f}K"
     return str(n)
+
+
+def format_size(n):
+    if n >= 1024 * 1024 * 1024:
+        return f"{n / (1024**3):.1f} GB"
+    if n >= 1024 * 1024:
+        return f"{n / (1024**2):.1f} MB"
+    if n >= 1024:
+        return f"{n / 1024:.1f} KB"
+    return f"{n} B"
 
 
 def _display_width(s):
@@ -371,6 +401,7 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
 
         total_faces = sum(s["faces"] for s in stats)
         total_verts = sum(s["vertices"] for s in stats)
+        total_size = sum(s["size"] for s in stats)
 
         sort_label = _SORT_LABELS[scene.mesh_face_sorter_sort_by]
         order_label = '降序' if scene.mesh_face_sorter_descending else '升序'
@@ -383,13 +414,15 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
         lines.append(f"- **网格体总数**：{len(stats)}")
         lines.append(f"- **总面数**：{total_faces}")
         lines.append(f"- **总顶点**：{total_verts}")
+        lines.append(f"- **总存储**：{format_size(total_size)}")
         lines.append("")
-        lines.append("| # | 物体名称 | 面数 | 顶点数 | 边数 | 选中 | 隐藏 |")
-        lines.append("|---|---|---|---|---|---|---|")
+        lines.append("| # | 物体名称 | 面数 | 顶点数 | 边数 | 存储 | 选中 | 隐藏 |")
+        lines.append("|---|---|---|---|---|---|---|---|")
         for i, s in enumerate(stats, 1):
             lines.append(
                 f"| {i} | {s['name']} | {s['faces']} | {s['vertices']} "
-                f"| {s['edges']} | {'是' if s['selected'] else '否'} "
+                f"| {s['edges']} | {format_size(s['size'])} "
+                f"| {'是' if s['selected'] else '否'} "
                 f"| {'是' if s['hidden'] else '否'} |"
             )
         lines.append("")
@@ -594,6 +627,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         stats = collect_mesh_stats(sort_by=sort_by, descending=descending)
         total_faces = sum(s["faces"] for s in stats)
         total_verts = sum(s["vertices"] for s in stats)
+        total_size = sum(s["size"] for s in stats)
 
         # 统计区
         box = layout.box()
@@ -605,6 +639,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.label(text=f"总面数：{format_number(total_faces)}")
         row = box.row()
         row.label(text=f"总顶点：{format_number(total_verts)}")
+        row = box.row()
+        row.label(text=f"总存储：{format_size(total_size)}")
 
         # 排序方式切换
         box = layout.box()
@@ -683,8 +719,10 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         h_right.alignment = 'RIGHT'
         if sort_by == 'FACES':
             h_right.label(text="面数*  ")
-        else:
+        elif sort_by == 'VERTS':
             h_right.label(text="顶点*  ")
+        else:
+            h_right.label(text="存储*  ")
 
         col.separator()
 
@@ -721,8 +759,10 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             right.alignment = 'RIGHT'
             if sort_by == 'FACES':
                 right.label(text=format_number(s["faces"]))
-            else:
+            elif sort_by == 'VERTS':
                 right.label(text=format_number(s["vertices"]))
+            else:
+                right.label(text=format_size(s["size"]))
             right.separator(factor=0.5)   # 面数与按钮间留小间距
             op_iso = right.operator(
                 "mesh_face_sorter.isolate",
@@ -787,6 +827,7 @@ def register():
         items=[
             ('FACES', "面数", "按面数排序"),
             ('VERTS', "顶点", "按顶点数排序"),
+            ('SIZE', "存储大小", "按估算内存占用排序"),
         ],
         default='FACES',
     )
