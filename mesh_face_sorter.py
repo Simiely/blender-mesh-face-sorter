@@ -439,7 +439,7 @@ def add_decimate_to_object(obj, ratio=0.5):
 
 class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate"
-    bl_label = "一键添加减面修改器"
+    bl_label = "减面修改器"
     bl_description = "给当前选中的所有网格体添加 Decimate 修改器（Collapse 模式）"
 
     ratio: bpy.props.FloatProperty(
@@ -667,7 +667,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.enabled = not is_scanning
         op = row.operator(
             "mesh_face_sorter.add_decimate",
-            text="一键添加减面修改器",
+            text="减面修改器",
             icon='MOD_DECIM',
         )
         op.ratio = scene.mesh_face_sorter_decimate_ratio
