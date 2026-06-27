@@ -656,15 +656,11 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.enabled = not is_scanning
         row.operator("mesh_face_sorter.export_md", icon='EXPORT')
 
-        # 一键添加减面修改器
+        # 减面修改器
         layout.separator()
-        row = layout.row()
+        row = layout.row(align=True)
         row.enabled = not is_scanning
-        row.prop(scene, "mesh_face_sorter_decimate_ratio", text="比例")
-        row.separator()
-        row = layout.row()
         row.scale_y = 1.4
-        row.enabled = not is_scanning
         op = row.operator(
             "mesh_face_sorter.add_decimate",
             text="减面修改器",
@@ -676,6 +672,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             text="应用减面",
             icon='CHECKMARK',
         )
+        row.alignment = 'RIGHT'
+        row.prop(scene, "mesh_face_sorter_decimate_ratio", text="比例")
 
         layout.separator()
 
