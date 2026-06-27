@@ -372,6 +372,34 @@ class MESH_OT_FaceSortDeleteEmpty(bpy.types.Operator):
         self.layout.label(text=f"将删除 {empty_count} 个面数为 0 的网格体")
 
 
+class MESH_OT_FaceSortDeleteObject(bpy.types.Operator):
+    """删除指定的单个网格体（带确认对话框）"""
+    bl_idname = "mesh_face_sorter.delete_object"
+    bl_label = "删除网格体"
+    bl_description = "删除该网格体（可通过 Ctrl+Z 撤销）"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    object_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.object_name)
+        if not obj or obj.type != 'MESH':
+            self.report({'WARNING'}, f"未找到网格体：{self.object_name}")
+            return {'CANCELLED'}
+        name = obj.name
+        bpy.data.objects.remove(obj, do_unlink=True)
+        invalidate_cache()
+        self.report({'INFO'}, f"已删除：{name}")
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.label(text=f"将删除网格体：{self.object_name}")
+        self.layout.label(text="可通过 Ctrl+Z 撤销", icon='UNDO')
+
+
 # -----------------------------------------------------------------------------
 # Operators - 导出 Markdown 报表
 # -----------------------------------------------------------------------------
@@ -634,11 +662,13 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             return
 
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
-        # 三列布局：序号 / 名称(含计数) / 功能按键，均左对齐
+        # 四列左对齐布局：序号 / 名称 / 计数 / 控制按钮（孤立 + 简面 + 删除）
         MAX_DISPLAY = 500
-        # split 比例：序号 10% → 名称 65%×余量 → 功能按键 余下部分
-        SEQ_FACTOR = 0.10
-        NAME_FACTOR = 0.65
+        # split 比例（基于剩余空间递推）：
+        #   序号 10% → 名称 45% → 计数 15% → 控制 30%
+        SEQ_FACTOR = 0.10           # 序号占整体 10%
+        NAME_FACTOR = 0.50          # 名称占剩余 90% 的 50% = 整体 45%
+        COUNT_FACTOR = 0.3333       # 计数占剩余 45% 的 33.3% = 整体 15%（剩 30% 给控制列）
 
         box = layout.box()
         box.enabled = not is_scanning
@@ -646,7 +676,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 
         sort_icon = 'SORT_DESC' if descending else 'SORT_ASC'
 
-        # 表头
+        # 表头（与数据行使用相同的 split 比例，保证列边对齐）
         header = col.row(align=True)
         header.alignment = 'LEFT'
         h_seq = header.split(factor=SEQ_FACTOR, align=True)
@@ -655,51 +685,73 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         h_name = header.split(factor=NAME_FACTOR, align=True)
         h_name.alignment = 'LEFT'
         h_name.label(text="物体名称")
+        h_count = header.split(factor=COUNT_FACTOR, align=True)
+        h_count.alignment = 'LEFT'
         if sort_by == 'FACES':
-            h_name.label(text="面数*")
+            h_count.label(text="面数*")
         elif sort_by == 'VERTS':
-            h_name.label(text="顶点*")
+            h_count.label(text="顶点*")
         else:
-            h_name.label(text="三角面*")
+            h_count.label(text="三角面*")
         header.alignment = 'LEFT'
         header.label(text="", icon='HIDE_OFF')
         header.label(text="", icon='MOD_DECIM')
+        header.label(text="", icon='TRASH')
 
         col.separator()
 
         display_stats = stats[:MAX_DISPLAY]
         for i, s in enumerate(display_stats, 1):
+            # 实时读取选中/隐藏状态（缓存只用于排序与计数，状态实时刷新）
+            # 用 try/except 防止缓存中的 object 引用已失效（被删除等）
+            try:
+                live_obj = s["object"]
+                is_selected = live_obj.select_get()
+                is_hidden = live_obj.hide_get()
+            except ReferenceError:
+                # 物体已被删除，跳过这一行（下次刷新会彻底清除）
+                continue
+
             row = col.row(align=True)
             row.alignment = 'LEFT'
+            # 选中行高亮：Blender UI 用 active 标记激活行
+            row.active = is_selected
 
             # 序号列
             seq_col = row.split(factor=SEQ_FACTOR, align=True)
             seq_col.alignment = 'LEFT'
             seq_col.label(text=str(i))
 
-            # 名称列（含计数；名称过长按显示宽度截断）
+            # 名称列（过长按显示宽度截断；选中用 OBJECT_DATA 图标）
             name_col = row.split(factor=NAME_FACTOR, align=True)
             name_col.alignment = 'LEFT'
+            display_name = _truncate_name(s["name"])
+            if is_selected:
+                display_name = "▶ " + display_name
             op_name = name_col.operator(
                 "mesh_face_sorter.select_object",
-                text=_truncate_name(s["name"]),
-                icon='OBJECT_DATA' if s["selected"] else 'MESH_DATA',
-                emboss=False,
+                text=display_name,
+                icon='OBJECT_DATA' if is_selected else 'MESH_DATA',
+                emboss=is_selected,
             )
             op_name.object_name = s["name"]
-            if sort_by == 'FACES':
-                name_col.label(text=format_number(s["faces"]))
-            elif sort_by == 'VERTS':
-                name_col.label(text=format_number(s["vertices"]))
-            else:
-                name_col.label(text=format_number(s["tris"]))
 
-            # 功能按键列（孤立显示 + 添加简面）
+            # 计数列（独立一列，按当前排序字段显示）
+            count_col = row.split(factor=COUNT_FACTOR, align=True)
+            count_col.alignment = 'LEFT'
+            if sort_by == 'FACES':
+                count_col.label(text=format_number(s["faces"]))
+            elif sort_by == 'VERTS':
+                count_col.label(text=format_number(s["vertices"]))
+            else:
+                count_col.label(text=format_number(s["tris"]))
+
+            # 控制按钮列：孤立显示 + 添加简面 + 删除
             row.alignment = 'LEFT'
             op_iso = row.operator(
                 "mesh_face_sorter.isolate",
                 text="",
-                icon='HIDE_OFF' if not s["hidden"] else 'HIDE_ON',
+                icon='HIDE_OFF' if not is_hidden else 'HIDE_ON',
                 emboss=True,
             )
             op_iso.object_name = s["name"]
@@ -712,6 +764,14 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             )
             op_dec.object_name = s["name"]
             op_dec.ratio = 0.5
+
+            op_del = row.operator(
+                "mesh_face_sorter.delete_object",
+                text="",
+                icon='TRASH',
+                emboss=True,
+            )
+            op_del.object_name = s["name"]
 
         # 如果超出最大显示数量，提示
         if len(stats) > MAX_DISPLAY:
@@ -745,6 +805,7 @@ classes = (
     MESH_OT_FaceSortIsolate,
     MESH_OT_FaceSortShowAll,
     MESH_OT_FaceSortDeleteEmpty,
+    MESH_OT_FaceSortDeleteObject,
     MESH_OT_FaceSortExportMd,
     MESH_OT_FaceSortAddDecimate,
     MESH_OT_FaceSortAddDecimateToObject,
