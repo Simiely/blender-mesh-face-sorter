@@ -566,37 +566,6 @@ class MESH_OT_FaceSortPurgeOrphanData(bpy.types.Operator):
 
 
 # -----------------------------------------------------------------------------
-# Operators - 全局 Delete 快捷键（解决鼠标在面板内无法删除的问题）
-# -----------------------------------------------------------------------------
-
-
-class MESH_OT_FaceSortDeleteSelected(bpy.types.Operator):
-    """删除当前选中的所有网格体（可在面板内按 Delete 触发）"""
-    bl_idname = "mesh_face_sorter.delete_selected"
-    bl_label = "删除选中网格体"
-    bl_description = "删除场景中所有选中的网格体"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        # 仅在物体模式且有选中网格体时生效
-        if context.mode != 'OBJECT':
-            return False
-        # 限制在 3D 视图区域（面板在 3D 视图侧边栏），避免在文本编辑器等误触
-        if context.area and context.area.type != 'VIEW_3D':
-            return False
-        return any(o.type == 'MESH' and o.select_get()
-                   for o in context.selected_objects)
-
-    def execute(self, context):
-        count = sum(1 for o in context.selected_objects if o.type == 'MESH')
-        bpy.ops.object.delete(use_global=False)
-        _Cache.invalidate()
-        self.report({'INFO'}, f"已删除 {count} 个网格体")
-        return {'FINISHED'}
-
-
-# -----------------------------------------------------------------------------
 # Panel
 # -----------------------------------------------------------------------------
 
@@ -825,7 +794,6 @@ classes = (
     MESH_OT_FaceSortIsolate,
     MESH_OT_FaceSortShowAll,
     MESH_OT_FaceSortDeleteEmpty,
-    MESH_OT_FaceSortDeleteSelected,
     MESH_OT_FaceSortExportMd,
     MESH_OT_FaceSortAddDecimate,
     MESH_OT_FaceSortAddDecimateToObject,
@@ -861,8 +829,6 @@ def register():
     )
     # 注册应用处理器（仅文件加载时清缓存）
     bpy.app.handlers.load_post.append(_on_load_post)
-    # 注册全局 Delete 快捷键：鼠标在面板内也能删除选中网格体
-    _register_keymap()
 
 
 def unregister():
@@ -872,36 +838,8 @@ def unregister():
     del bpy.types.Scene.mesh_face_sorter_sort_by
     del bpy.types.Scene.mesh_face_sorter_descending
     del bpy.types.Scene.mesh_face_sorter_decimate_ratio
-    _unregister_keymap()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-
-
-# -----------------------------------------------------------------------------
-# 快捷键注册
-# -----------------------------------------------------------------------------
-
-_addon_keymaps = []
-
-
-def _register_keymap():
-    wm = bpy.context.window_manager
-    kc = wm.keyconfigs.addon
-    if not kc:
-        return
-    # space_type='EMPTY' 表示全局生效（所有编辑器），包括鼠标在面板内时
-    km = kc.keymaps.new(name='Object Non-modal', space_type='EMPTY')
-    kmi = km.keymap_items.new(
-        'mesh_face_sorter.delete_selected',
-        'DEL', 'PRESS',
-    )
-    _addon_keymaps.append((km, kmi))
-
-
-def _unregister_keymap():
-    for km, kmi in _addon_keymaps:
-        km.keymap_items.remove(kmi)
-    _addon_keymaps.clear()
 
 
 if __name__ == "__main__":
