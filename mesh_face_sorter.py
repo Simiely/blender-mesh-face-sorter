@@ -25,12 +25,10 @@ class _Cache:
     切换排序方式时只重新排序缓存数据，不重新扫描。
     """
     stats = None            # 缓存的统计列表（已扫描的原始数据）
-    dirty = True            # 是否需要重新扫描
 
     @classmethod
     def invalidate(cls):
         """标记缓存需要重新扫描。"""
-        cls.dirty = True
         cls.stats = None
 
     @classmethod
@@ -41,13 +39,13 @@ class _Cache:
     @classmethod
     def store(cls, stats):
         cls.stats = stats
-        cls.dirty = False
 
 
-def _scan_meshes(with_progress=False):
+def _scan_meshes(with_progress=False, on_progress=None):
     """扫描所有网格体并收集统计信息（不含排序）。
     这是耗时操作，只在手动刷新或首次打开时调用。
-    with_progress=True 时更新 _ScanStatus 进度状态。
+    - with_progress=True：更新 _ScanStatus 进度状态，并预计算 loop_triangles
+    - on_progress(current)：每个物体扫描完后的回调（用于推进 wm 进度条等）
     """
     all_objects = list(bpy.data.objects)
     total = len(all_objects)
@@ -58,24 +56,28 @@ def _scan_meshes(with_progress=False):
     for i, obj in enumerate(all_objects, 1):
         if obj.type == 'MESH':
             mesh = obj.data
-            face_count = len(mesh.polygons)
-            vert_count = len(mesh.vertices)
-            edge_count = len(mesh.edges)
-            # 三角面：使用 loop_triangles（C 实现，比 Python 循环快几十倍）
-            tris_count = len(mesh.loop_triangles)
+            if with_progress:
+                # 刷新时预计算三角面缓存，让后续读取更快
+                try:
+                    mesh.calc_loop_triangles()
+                except Exception:
+                    pass
             stats.append({
                 "object": obj,
                 "name": obj.name,
-                "faces": face_count,
-                "vertices": vert_count,
-                "edges": edge_count,
-                "tris": tris_count,
+                "faces": len(mesh.polygons),
+                "vertices": len(mesh.vertices),
+                "edges": len(mesh.edges),
+                # 三角面：使用 loop_triangles（C 实现，比 Python 循环快几十倍）
+                "tris": len(mesh.loop_triangles),
                 "selected": obj.select_get(),
                 "visible": obj.visible_get(),
                 "hidden": obj.hide_get(),
             })
         if with_progress:
             _ScanStatus.update(i)
+            if on_progress is not None:
+                on_progress(i)
 
     if with_progress:
         _ScanStatus.finish(len(stats))
@@ -106,11 +108,6 @@ def collect_mesh_stats(sort_by='FACES', descending=True, force=False):
     # 复制一份再排序，避免污染缓存原始顺序
     sorted_stats = sorted(stats, key=lambda x: x[key_map[sort_by]], reverse=descending)
     return sorted_stats
-
-
-def invalidate_cache():
-    """外部调用：标记缓存失效。"""
-    _Cache.invalidate()
 
 
 class _ScanStatus:
@@ -173,7 +170,7 @@ def _display_width(s):
     return w
 
 
-def _truncate_name(name, max_width=28):
+def _truncate_name(name, max_width=40):
     """按显示宽度截断名称，超出部分以省略号代替。"""
     if _display_width(name) <= max_width:
         return name
@@ -199,49 +196,20 @@ class MESH_OT_FaceSortRefresh(bpy.types.Operator):
     bl_description = "重新扫描场景中的所有网格体（带进度提示）"
 
     def execute(self, context):
-        all_objects = list(bpy.data.objects)
-        total = len(all_objects)
-
-        # 启动 Blender 原生进度条
+        total = len(bpy.data.objects)
         wm = context.window_manager
         wm.progress_begin(0, total)
 
-        # 重置扫描状态
-        _ScanStatus.reset(total)
-
-        # 触发 loop_triangles 预计算（让后面读取更快）
-        # 同时更新进度
-        stats = []
-        for i, obj in enumerate(all_objects, 1):
-            if obj.type == 'MESH':
-                try:
-                    obj.data.calc_loop_triangles()
-                except Exception:
-                    pass
-                mesh = obj.data
-                stats.append({
-                    "object": obj,
-                    "name": obj.name,
-                    "faces": len(mesh.polygons),
-                    "vertices": len(mesh.vertices),
-                    "edges": len(mesh.edges),
-                    "tris": len(mesh.loop_triangles),
-                    "selected": obj.select_get(),
-                    "visible": obj.visible_get(),
-                    "hidden": obj.hide_get(),
-                })
-            # 更新进度
-            _ScanStatus.update(i)
-            wm.progress_update(i)
+        def on_progress(current):
+            wm.progress_update(current)
             # 每扫描 50 个物体刷新一次 UI（避免过度刷新卡顿）
-            if i % 50 == 0 or i == total:
+            if current % 50 == 0 or current == total:
                 for area in context.screen.areas:
                     if area.type == 'VIEW_3D':
                         area.tag_redraw()
 
-        # 完成
+        stats = _scan_meshes(with_progress=True, on_progress=on_progress)
         _Cache.store(stats)
-        _ScanStatus.finish(len(stats))
         wm.progress_end()
 
         for area in context.screen.areas:
@@ -304,8 +272,8 @@ class MESH_OT_FaceSortIsolate(bpy.types.Operator):
         for obj in bpy.data.objects:
             if obj.type == 'MESH':
                 obj.hide_set(obj != target)
-        # 隐藏状态变化，刷新缓存中的 hidden 字段
-        invalidate_cache()
+        # 隐藏状态变化，清缓存让下次刷新
+        _Cache.invalidate()
         self.report({'INFO'}, f"已孤立显示：{target.name}")
         return {'FINISHED'}
 
@@ -322,7 +290,7 @@ class MESH_OT_FaceSortShowAll(bpy.types.Operator):
             if obj.type == 'MESH' and obj.hide_get():
                 obj.hide_set(False)
                 count += 1
-        invalidate_cache()
+        _Cache.invalidate()
         self.report({'INFO'}, f"已显示 {count} 个隐藏的网格体")
         return {'FINISHED'}
 
@@ -357,7 +325,7 @@ class MESH_OT_FaceSortDeleteEmpty(bpy.types.Operator):
             return {'CANCELLED'}
         for obj in empty_objs:
             bpy.data.objects.remove(obj, do_unlink=True)
-        invalidate_cache()
+        _Cache.invalidate()
         self.report({'INFO'}, f"已删除 {count} 个空网格体")
         return {'FINISHED'}
 
@@ -564,9 +532,6 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
                     icon='INFO',
                 )
 
-        # 扫描中时禁用其他操作（除了刷新按钮本身）
-        # 使用 active=False 的方式：把后续 UI 放到一个 enabled 开关控制的块里
-
         # 使用缓存的数据（不会每帧重新扫描）
         stats = collect_mesh_stats(sort_by=sort_by, descending=descending)
         total_faces = sum(s["faces"] for s in stats)
@@ -679,7 +644,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             # 左侧：名称（弹性占大部分）
             name_col = row.split(factor=NAME_FACTOR, align=True)
             name_col.alignment = 'LEFT'
-            display_name = _truncate_name(s["name"], max_width=40)
+            display_name = _truncate_name(s["name"])
             op_name = name_col.operator(
                 "mesh_face_sorter.select_object",
                 text=("▶ " + display_name) if is_selected else display_name,
