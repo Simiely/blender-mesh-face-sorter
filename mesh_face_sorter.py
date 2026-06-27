@@ -1,7 +1,7 @@
 bl_info = {
     "name": "网格排序器 Mesh Face Sorter",
     "author": "Simiely",
-    "version": (1, 5, 1),
+    "version": (1, 6, 0),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
     "description": "按面数/顶点/存储大小排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
