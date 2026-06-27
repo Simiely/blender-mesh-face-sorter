@@ -4,7 +4,7 @@ bl_info = {
     "version": (1, 5, 1),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
-    "description": "按面数/顶点排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、加减面修改器（手动刷新 + 进度提示）",
+    "description": "按面数/顶点排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/mesh-face-sorter",
     "category": "Mesh",
@@ -92,12 +92,8 @@ def collect_mesh_stats(sort_by='FACES', descending=True, force=False):
         stats = _Cache.stats
 
     # 按指定字段排序（每次都排，因为排序很快，且可能切换了排序方式）
-    key_map = {
-        'FACES': "faces",
-        'VERTS': "vertices",
-    }
     # 复制一份再排序，避免污染缓存原始顺序
-    sorted_stats = sorted(stats, key=lambda x: x[key_map[sort_by]], reverse=descending)
+    sorted_stats = sorted(stats, key=lambda x: x[_SORT_KEY_MAP[sort_by]], reverse=descending)
     return sorted_stats
 
 
@@ -143,6 +139,16 @@ class _ScanStatus:
 
 # 初始化状态
 _ScanStatus.idle()
+
+# 排序字段映射与标签（避免重复定义）
+_SORT_KEY_MAP = {
+    'FACES': "faces",
+    'VERTS': "vertices",
+}
+_SORT_LABELS = {
+    'FACES': "面数",
+    'VERTS': "顶点数",
+}
 
 
 def format_number(n):
@@ -366,9 +372,7 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
         total_faces = sum(s["faces"] for s in stats)
         total_verts = sum(s["vertices"] for s in stats)
 
-        sort_label = {
-            'FACES': '面数', 'VERTS': '顶点数'
-        }[scene.mesh_face_sorter_sort_by]
+        sort_label = _SORT_LABELS[scene.mesh_face_sorter_sort_by]
         order_label = '降序' if scene.mesh_face_sorter_descending else '升序'
 
         lines = []
@@ -538,18 +542,8 @@ class MESH_OT_FaceSortPurgeOrphanData(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        # 统计清理前数量
-        meshes_before = len(bpy.data.meshes)
-        materials_before = len(bpy.data.materials)
-        # 调用 Blender 原生递归清理
         bpy.ops.outliner.orphans_purge(do_recursive=True)
-        meshes_after = len(bpy.data.meshes)
-        materials_after = len(bpy.data.materials)
-        removed = (meshes_before - meshes_after) + (materials_before - materials_after)
-        if removed > 0:
-            self.report({'INFO'}, f"已清理 {removed} 个未使用数据块")
-        else:
-            self.report({'INFO'}, "没有未使用的数据块")
+        self.report({'INFO'}, "已清理未使用数据块")
         _Cache.invalidate()
         return {'FINISHED'}
 
