@@ -4,7 +4,7 @@ bl_info = {
     "version": (1, 5, 1),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
-    "description": "按面数/顶点/三角面排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、一键加减面修改器（手动刷新 + 进度提示）",
+    "description": "按面数/顶点排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、加减面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/mesh-face-sorter",
     "category": "Mesh",
@@ -44,7 +44,7 @@ class _Cache:
 def _scan_meshes(with_progress=False, on_progress=None):
     """扫描所有网格体并收集统计信息（不含排序）。
     这是耗时操作，只在手动刷新或首次打开时调用。
-    - with_progress=True：更新 _ScanStatus 进度状态，并预计算 loop_triangles
+    - with_progress=True：更新 _ScanStatus 进度状态
     - on_progress(current)：每个物体扫描完后的回调（用于推进 wm 进度条等）
     """
     all_objects = list(bpy.data.objects)
@@ -56,20 +56,12 @@ def _scan_meshes(with_progress=False, on_progress=None):
     for i, obj in enumerate(all_objects, 1):
         if obj.type == 'MESH':
             mesh = obj.data
-            if with_progress:
-                # 刷新时预计算三角面缓存，让后续读取更快
-                try:
-                    mesh.calc_loop_triangles()
-                except Exception:
-                    pass
             stats.append({
                 "object": obj,
                 "name": obj.name,
                 "faces": len(mesh.polygons),
                 "vertices": len(mesh.vertices),
                 "edges": len(mesh.edges),
-                # 三角面：使用 loop_triangles（C 实现，比 Python 循环快几十倍）
-                "tris": len(mesh.loop_triangles),
                 "selected": obj.select_get(),
                 "visible": obj.visible_get(),
                 "hidden": obj.hide_get(),
@@ -103,7 +95,6 @@ def collect_mesh_stats(sort_by='FACES', descending=True, force=False):
     key_map = {
         'FACES': "faces",
         'VERTS': "vertices",
-        'TRIS': "tris",
     }
     # 复制一份再排序，避免污染缓存原始顺序
     sorted_stats = sorted(stats, key=lambda x: x[key_map[sort_by]], reverse=descending)
@@ -373,11 +364,10 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
             path += '.md'
 
         total_faces = sum(s["faces"] for s in stats)
-        total_tris = sum(s["tris"] for s in stats)
         total_verts = sum(s["vertices"] for s in stats)
 
         sort_label = {
-            'FACES': '面数', 'VERTS': '顶点数', 'TRIS': '三角面数'
+            'FACES': '面数', 'VERTS': '顶点数'
         }[scene.mesh_face_sorter_sort_by]
         order_label = '降序' if scene.mesh_face_sorter_descending else '升序'
 
@@ -388,15 +378,14 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
         lines.append(f"- **排序方式**：{sort_label}（{order_label}）")
         lines.append(f"- **网格体总数**：{len(stats)}")
         lines.append(f"- **总面数**：{total_faces}")
-        lines.append(f"- **总三角面**：{total_tris}")
         lines.append(f"- **总顶点**：{total_verts}")
         lines.append("")
-        lines.append("| # | 物体名称 | 面数 | 顶点数 | 三角面 | 边数 | 选中 | 隐藏 |")
-        lines.append("|---|---|---|---|---|---|---|---|")
+        lines.append("| # | 物体名称 | 面数 | 顶点数 | 边数 | 选中 | 隐藏 |")
+        lines.append("|---|---|---|---|---|---|---|")
         for i, s in enumerate(stats, 1):
             lines.append(
                 f"| {i} | {s['name']} | {s['faces']} | {s['vertices']} "
-                f"| {s['tris']} | {s['edges']} | {'是' if s['selected'] else '否'} "
+                f"| {s['edges']} | {'是' if s['selected'] else '否'} "
                 f"| {'是' if s['hidden'] else '否'} |"
             )
         lines.append("")
@@ -610,7 +599,6 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         # 使用缓存的数据（不会每帧重新扫描）
         stats = collect_mesh_stats(sort_by=sort_by, descending=descending)
         total_faces = sum(s["faces"] for s in stats)
-        total_tris = sum(s["tris"] for s in stats)
         total_verts = sum(s["vertices"] for s in stats)
 
         # 统计区
@@ -621,8 +609,6 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.label(text=f"网格体数量：{len(stats)}")
         row = box.row()
         row.label(text=f"总面数：{format_number(total_faces)}")
-        row = box.row()
-        row.label(text=f"总三角面：{format_number(total_tris)}")
         row = box.row()
         row.label(text=f"总顶点：{format_number(total_verts)}")
 
@@ -703,10 +689,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         h_right.alignment = 'RIGHT'
         if sort_by == 'FACES':
             h_right.label(text="面数*  ")
-        elif sort_by == 'VERTS':
-            h_right.label(text="顶点*  ")
         else:
-            h_right.label(text="三角面*  ")
+            h_right.label(text="顶点*  ")
 
         col.separator()
 
@@ -743,10 +727,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             right.alignment = 'RIGHT'
             if sort_by == 'FACES':
                 right.label(text=format_number(s["faces"]))
-            elif sort_by == 'VERTS':
-                right.label(text=format_number(s["vertices"]))
             else:
-                right.label(text=format_number(s["tris"]))
+                right.label(text=format_number(s["vertices"]))
             right.separator(factor=0.5)   # 面数与按钮间留小间距
             op_iso = right.operator(
                 "mesh_face_sorter.isolate",
@@ -811,7 +793,6 @@ def register():
         items=[
             ('FACES', "面数", "按面数排序"),
             ('VERTS', "顶点", "按顶点数排序"),
-            ('TRIS', "三角面", "按三角面数排序"),
         ],
         default='FACES',
     )
