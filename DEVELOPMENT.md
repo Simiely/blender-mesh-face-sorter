@@ -382,7 +382,7 @@ docs: 文档更新
 ## 文件结构
 
 ```
-mesh-face-sorter/
+blender-mesh-face-sorter/
 ├── mesh_face_sorter.py  # 插件主文件（约 740 行）
 ├── README.md            # 用户文档
 └── DEVELOPMENT.md       # 本文档（开发文档）
