@@ -1,4 +1,4 @@
-# Mesh Face Sorter
+# Blender Mesh Face Sorter
 
 > Blender 插件：按面数/顶点/三角面排列场景中的所有网格体，帮助你快速定位高面数模型、批量减面、清理场景。
 

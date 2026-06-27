@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "网格排序器 Mesh Face Sorter",
+    "name": "Blender 网格排序器 Mesh Face Sorter",
     "author": "Simiely",
     "version": (1, 6, 0),
     "blender": (3, 0, 0),
