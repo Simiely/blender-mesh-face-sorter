@@ -662,13 +662,14 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             return
 
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
-        # 四列左对齐布局：序号 / 名称 / 计数 / 控制按钮（孤立 + 简面 + 删除）
+        # 三列布局（左→右）：
+        #   名称（弹性，占大部分）｜ 面数（固定窄列，右对齐）｜ 控制按钮（固定，贴最右）
+        # 按钮用纯图标，宽度由图标决定，天然固定；面数右对齐让数字贴齐按钮左侧
         MAX_DISPLAY = 500
         # split 比例（基于剩余空间递推）：
-        #   序号 10% → 名称 45% → 计数 15% → 控制 30%
-        SEQ_FACTOR = 0.10           # 序号占整体 10%
-        NAME_FACTOR = 0.50          # 名称占剩余 90% 的 50% = 整体 45%
-        COUNT_FACTOR = 0.3333       # 计数占剩余 45% 的 33.3% = 整体 15%（剩 30% 给控制列）
+        #   名称 62% → 面数 占剩余 38% 的 40% ≈ 整体 15% → 按钮 剩 23%
+        NAME_FACTOR = 0.62
+        COUNT_FACTOR = 0.40   # 面数占"名称之后剩余空间"的 40%
 
         box = layout.box()
         box.enabled = not is_scanning
@@ -678,22 +679,19 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 
         # 表头（与数据行使用相同的 split 比例，保证列边对齐）
         header = col.row(align=True)
-        header.alignment = 'LEFT'
-        h_seq = header.split(factor=SEQ_FACTOR, align=True)
-        h_seq.alignment = 'LEFT'
-        h_seq.label(text="#", icon=sort_icon)
         h_name = header.split(factor=NAME_FACTOR, align=True)
         h_name.alignment = 'LEFT'
-        h_name.label(text="物体名称")
+        h_name.label(text="物体名称", icon=sort_icon)
         h_count = header.split(factor=COUNT_FACTOR, align=True)
-        h_count.alignment = 'LEFT'
+        h_count.alignment = 'RIGHT'
         if sort_by == 'FACES':
             h_count.label(text="面数*")
         elif sort_by == 'VERTS':
             h_count.label(text="顶点*")
         else:
             h_count.label(text="三角面*")
-        header.alignment = 'LEFT'
+        # 按钮列表头：右对齐，与数据行按钮对齐
+        header.alignment = 'RIGHT'
         header.label(text="", icon='HIDE_OFF')
         header.label(text="", icon='MOD_DECIM')
         header.label(text="", icon='TRASH')
@@ -701,7 +699,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         col.separator()
 
         display_stats = stats[:MAX_DISPLAY]
-        for i, s in enumerate(display_stats, 1):
+        for s in display_stats:
             # 实时读取选中/隐藏状态（缓存只用于排序与计数，状态实时刷新）
             # 用 try/except 防止缓存中的 object 引用已失效（被删除等）
             try:
@@ -713,16 +711,10 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
                 continue
 
             row = col.row(align=True)
-            row.alignment = 'LEFT'
-            # 选中行高亮：Blender UI 用 active 标记激活行
+            # 选中行高亮
             row.active = is_selected
 
-            # 序号列
-            seq_col = row.split(factor=SEQ_FACTOR, align=True)
-            seq_col.alignment = 'LEFT'
-            seq_col.label(text=str(i))
-
-            # 名称列（过长按显示宽度截断；选中用 OBJECT_DATA 图标）
+            # 名称列（弹性宽度，左对齐；过长按显示宽度截断）
             name_col = row.split(factor=NAME_FACTOR, align=True)
             name_col.alignment = 'LEFT'
             display_name = _truncate_name(s["name"])
@@ -736,9 +728,9 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             )
             op_name.object_name = s["name"]
 
-            # 计数列（独立一列，按当前排序字段显示）
+            # 面数列（固定窄列，右对齐让数字贴齐按钮左侧）
             count_col = row.split(factor=COUNT_FACTOR, align=True)
-            count_col.alignment = 'LEFT'
+            count_col.alignment = 'RIGHT'
             if sort_by == 'FACES':
                 count_col.label(text=format_number(s["faces"]))
             elif sort_by == 'VERTS':
@@ -746,8 +738,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             else:
                 count_col.label(text=format_number(s["tris"]))
 
-            # 控制按钮列：孤立显示 + 添加简面 + 删除
-            row.alignment = 'LEFT'
+            # 控制按钮列（贴最右；纯图标按钮宽度天然固定）
+            row.alignment = 'RIGHT'
             op_iso = row.operator(
                 "mesh_face_sorter.isolate",
                 text="",
