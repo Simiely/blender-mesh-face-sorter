@@ -677,7 +677,6 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row = layout.row()
         row.enabled = not is_scanning
         row.prop(scene, "mesh_face_sorter_decimate_ratio", text="比例")
-        row.separator()
         row = layout.row()
         row.scale_y = 1.4
         row.enabled = not is_scanning
