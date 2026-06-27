@@ -440,7 +440,7 @@ def add_decimate_to_object(obj, ratio=0.5):
 class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate"
     bl_label = "一键添加简面修改器"
-    bl_description = "给当前选中的所有网格体添加 Decimate 修改器（Collapse 模式，保留 50% 面数）"
+    bl_description = "给当前选中的所有网格体添加 Decimate 修改器（Collapse 模式）"
 
     ratio: bpy.props.FloatProperty(
         name="保留比例",
@@ -487,6 +487,35 @@ class MESH_OT_FaceSortAddDecimateToObject(bpy.types.Operator):
             self.report({'INFO'}, f"已添加简面修改器：{obj.name}")
         else:
             self.report({'INFO'}, f"已存在简面修改器，跳过：{obj.name}")
+        return {'FINISHED'}
+
+
+# -----------------------------------------------------------------------------
+# Operators - 清理未使用数据
+# -----------------------------------------------------------------------------
+
+
+class MESH_OT_FaceSortPurgeOrphanData(bpy.types.Operator):
+    """清理场景中未使用的数据块（网格、材质、贴图等）"""
+    bl_idname = "mesh_face_sorter.purge_orphan_data"
+    bl_label = "清理未使用数据"
+    bl_description = "删除场景中所有未使用的数据块（等价于 文件 > 清理 > 递归清理未使用数据块）"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        # 统计清理前数量
+        meshes_before = len(bpy.data.meshes)
+        materials_before = len(bpy.data.materials)
+        # 调用 Blender 原生递归清理
+        bpy.ops.outliner.orphans_purge(do_recursive=True)
+        meshes_after = len(bpy.data.meshes)
+        materials_after = len(bpy.data.materials)
+        removed = (meshes_before - meshes_after) + (materials_before - materials_after)
+        if removed > 0:
+            self.report({'INFO'}, f"已清理 {removed} 个未使用数据块")
+        else:
+            self.report({'INFO'}, "没有未使用的数据块")
+        _Cache.invalidate()
         return {'FINISHED'}
 
 
@@ -575,6 +604,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         row.enabled = not is_scanning
         row.operator("mesh_face_sorter.show_all", icon='HIDE_OFF')
         row.operator("mesh_face_sorter.delete_empty", icon='TRASH')
+        row.operator("mesh_face_sorter.purge_orphan_data", icon='BRUSH_DATA')
 
         row = layout.row()
         row.enabled = not is_scanning
@@ -583,6 +613,10 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         # 一键添加简面修改器
         layout.separator()
         row = layout.row()
+        row.enabled = not is_scanning
+        row.prop(scene, "mesh_face_sorter_decimate_ratio", text="比例")
+        row.separator()
+        row = layout.row()
         row.scale_y = 1.4
         row.enabled = not is_scanning
         op = row.operator(
@@ -590,7 +624,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             text="一键添加简面修改器",
             icon='MOD_DECIM',
         )
-        op.ratio = 0.5
+        op.ratio = scene.mesh_face_sorter_decimate_ratio
 
         layout.separator()
 
@@ -675,7 +709,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
                 icon='MOD_DECIM',
             )
             op_dec.object_name = s["name"]
-            op_dec.ratio = 0.5
+            op_dec.ratio = scene.mesh_face_sorter_decimate_ratio
 
         # 如果超出最大显示数量，提示
         if len(stats) > MAX_DISPLAY:
@@ -712,6 +746,7 @@ classes = (
     MESH_OT_FaceSortExportMd,
     MESH_OT_FaceSortAddDecimate,
     MESH_OT_FaceSortAddDecimateToObject,
+    MESH_OT_FaceSortPurgeOrphanData,
     MESH_PT_FaceSortPanel,
 )
 
@@ -732,6 +767,14 @@ def register():
         name="降序",
         default=True,
     )
+    bpy.types.Scene.mesh_face_sorter_decimate_ratio = bpy.props.FloatProperty(
+        name="简面保留比例",
+        description="Decimate 修改器保留的面数比例（0.0~1.0）",
+        default=0.5,
+        min=0.001,
+        max=1.0,
+        subtype='FACTOR',
+    )
     # 注册应用处理器（仅文件加载时清缓存）
     bpy.app.handlers.load_post.append(_on_load_post)
 
@@ -742,6 +785,7 @@ def unregister():
         bpy.app.handlers.load_post.remove(_on_load_post)
     del bpy.types.Scene.mesh_face_sorter_sort_by
     del bpy.types.Scene.mesh_face_sorter_descending
+    del bpy.types.Scene.mesh_face_sorter_decimate_ratio
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
