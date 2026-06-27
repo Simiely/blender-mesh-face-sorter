@@ -22,9 +22,9 @@
 ### 方式一：下载安装（推荐）
 
 1. 访问 [GitHub 仓库](https://github.com/Simiely/mesh-face-sorter)
-2. 下载 `__init__.py` 文件
+2. 下载 `mesh_face_sorter.py` 文件
 3. 打开 Blender → `编辑 (Edit)` → `偏好设置 (Preferences)` → `插件 (Add-ons)`
-4. 点击右上角 `安装 (Install)`，选择下载的 `__init__.py`
+4. 点击右上角 `安装 (Install)`，选择下载的 `mesh_face_sorter.py`
 5. 在插件列表中搜索 `Mesh Face Sorter`，勾选启用
 
 ### 方式二：克隆仓库
@@ -33,7 +33,7 @@
 git clone https://github.com/Simiely/mesh-face-sorter.git
 ```
 
-将 `__init__.py` 按方式一的步骤 3-5 安装即可。
+将 `mesh_face_sorter.py` 按方式一的步骤 3-5 安装即可。
 
 ## 使用方法
 

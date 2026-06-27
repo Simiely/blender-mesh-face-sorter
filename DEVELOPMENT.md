@@ -5,7 +5,7 @@
 ## 架构概览
 
 ```
-__init__.py  (单文件插件，约 740 行)
+mesh_face_sorter.py  (单文件插件，约 740 行)
 │
 ├─ bl_info                        # 插件元信息
 ├─ _Cache 类                      # 缓存层（解决大场景卡顿）
@@ -334,7 +334,7 @@ class MESH_OT_ApplyAllDecimate(bpy.types.Operator):
 ### 本地安装测试
 
 ```bash
-# 1. 直接在 Blender 里安装 __init__.py
+# 1. 直接在 Blender 里安装 mesh_face_sorter.py
 # 2. 修改代码后，在 Blender 的 Python Console 里重载：
 import importlib
 import mesh_face_sorter  # 或实际的模块名
@@ -356,7 +356,7 @@ tail -f ~/.config/blender/4.x/scripts/logs/blender.log
 ### 语法检查（不用 Blender）
 
 ```bash
-python3 -c "import ast; ast.parse(open('__init__.py').read()); print('OK')"
+python3 -c "import ast; ast.parse(open('mesh_face_sorter.py').read()); print('OK')"
 ```
 
 ### 兼容性检查清单
@@ -383,7 +383,7 @@ docs: 文档更新
 
 ```
 mesh-face-sorter/
-├── __init__.py          # 插件主文件（约 740 行）
+├── mesh_face_sorter.py  # 插件主文件（约 740 行）
 ├── README.md            # 用户文档
 └── DEVELOPMENT.md       # 本文档（开发文档）
 ```
