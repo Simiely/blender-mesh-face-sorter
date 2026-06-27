@@ -23,9 +23,11 @@ class _Cache:
     """简单的全局缓存。避免 Panel 每帧重新扫描场景。
     纯手动刷新模式：只有点「刷新」按钮或加载新文件后才重新扫描。
     切换排序方式时只重新排序缓存数据，不重新扫描。
+    场景物体增删时由 depsgraph 处理器自动失效。
     """
     stats = None            # 缓存的统计列表（已扫描的原始数据）
     dirty = True            # 是否需要重新扫描
+    last_object_count = -1  # 上次扫描时的物体总数，用于检测增删
 
     @classmethod
     def invalidate(cls):
@@ -42,6 +44,11 @@ class _Cache:
     def store(cls, stats):
         cls.stats = stats
         cls.dirty = False
+        # 记录当前物体总数，供 depsgraph 检测增删
+        try:
+            cls.last_object_count = len(bpy.data.objects)
+        except Exception:
+            cls.last_object_count = -1
 
 
 def _scan_meshes(with_progress=False):
@@ -370,35 +377,6 @@ class MESH_OT_FaceSortDeleteEmpty(bpy.types.Operator):
             if obj.type == 'MESH' and len(obj.data.polygons) == 0
         )
         self.layout.label(text=f"将删除 {empty_count} 个面数为 0 的网格体")
-
-
-class MESH_OT_FaceSortDeleteObject(bpy.types.Operator):
-    """删除指定的单个网格体（带确认对话框）"""
-    bl_idname = "mesh_face_sorter.delete_object"
-    bl_label = "删除网格体"
-    bl_description = "删除该网格体（不可撤销，请谨慎操作）"
-    bl_options = {'REGISTER'}
-
-    object_name: bpy.props.StringProperty()
-
-    def execute(self, context):
-        obj = bpy.data.objects.get(self.object_name)
-        if not obj or obj.type != 'MESH':
-            self.report({'WARNING'}, f"未找到网格体：{self.object_name}")
-            return {'CANCELLED'}
-        name = obj.name
-        # 先清缓存再删除，避免 draw() 在删除瞬间访问已失效的弱引用
-        invalidate_cache()
-        bpy.data.objects.remove(obj, do_unlink=True)
-        self.report({'INFO'}, f"已删除：{name}")
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-
-    def draw(self, context):
-        self.layout.label(text=f"将删除网格体：{self.object_name}")
-        self.layout.label(text="此操作不可撤销，请确认", icon='ERROR')
 
 
 # -----------------------------------------------------------------------------
@@ -740,12 +718,6 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             )
             op_dec.object_name = s["name"]
             op_dec.ratio = 0.5
-            op_del = right.operator(
-                "mesh_face_sorter.delete_object",
-                text="",
-                icon='TRASH',
-            )
-            op_del.object_name = s["name"]
 
         # 如果超出最大显示数量，提示
         if len(stats) > MAX_DISPLAY:
@@ -757,7 +729,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 
 
 # -----------------------------------------------------------------------------
-# 应用处理器 — 仅在加载新文件时清缓存（不自动监听场景变化）
+# 应用处理器 — 文件加载清缓存 + 场景物体增删自动清缓存
 # -----------------------------------------------------------------------------
 
 
@@ -765,6 +737,20 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 def _on_load_post(dummy):
     """文件加载时清缓存，下次打开面板会重新扫描。"""
     _Cache.invalidate()
+
+
+@bpy.app.handlers.persistent
+def _on_depsgraph_update(scene):
+    """场景依赖图更新时，检测物体增删并清缓存。
+
+    只在物体数量变化时清缓存（避免每帧重绘都失效）。
+    这样按 Delete 删除选中物体后，列表会自动刷新，无需手动点「刷新」。
+    """
+    # 用当前物体总数与缓存时记录的数量比较，变了才清
+    current_count = len(scene.objects)
+    if current_count != _Cache.last_object_count:
+        _Cache.last_object_count = current_count
+        _Cache.invalidate()
 
 
 # -----------------------------------------------------------------------------
@@ -779,7 +765,6 @@ classes = (
     MESH_OT_FaceSortIsolate,
     MESH_OT_FaceSortShowAll,
     MESH_OT_FaceSortDeleteEmpty,
-    MESH_OT_FaceSortDeleteObject,
     MESH_OT_FaceSortExportMd,
     MESH_OT_FaceSortAddDecimate,
     MESH_OT_FaceSortAddDecimateToObject,
