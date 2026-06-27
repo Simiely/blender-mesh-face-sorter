@@ -663,9 +663,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
 
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
         # 布局：名称（左侧弹性，占大部分） | 面数+按钮（右侧紧凑组，整体右对齐贴边）
-        # 右侧用子 row + alignment='RIGHT' 让按钮真正贴右边缘，面数紧贴按钮左侧
         MAX_DISPLAY = 500
-        NAME_FACTOR = 0.70   # 名称占 70%，剩余 30% 给"面数+按钮"右侧组
+        NAME_FACTOR = 0.76   # 名称占 76%，右侧 24% 给"面数+按钮"（收窄面数区，减小名称与面数间距）
 
         box = layout.box()
         box.enabled = not is_scanning
@@ -700,8 +699,8 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
                 continue
 
             row = col.row(align=True)
-            # 注意：不用 row.active 做高亮（active=False 会变灰禁用，不是高亮）
-            # 选中行通过图标 + 前缀 + emboss 区分
+            # 恢复发灰对比效果：未选中行整体变灰，选中行正常高亮
+            row.active = is_selected
 
             # 左侧：名称（弹性占大部分）
             name_col = row.split(factor=NAME_FACTOR, align=True)
@@ -711,7 +710,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
                 "mesh_face_sorter.select_object",
                 text=("▶ " + display_name) if is_selected else display_name,
                 icon='OBJECT_DATA' if is_selected else 'MESH_DATA',
-                emboss=is_selected,   # 选中时有按钮边框，未选中时纯文字感
+                emboss=is_selected,
             )
             op_name.object_name = s["name"]
 
