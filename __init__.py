@@ -165,6 +165,29 @@ def format_number(n):
     return str(n)
 
 
+def _display_width(s):
+    """估算字符串显示宽度：CJK 字符算 2，其余算 1。"""
+    w = 0
+    for ch in s:
+        w += 2 if ord(ch) > 0x2E80 else 1
+    return w
+
+
+def _truncate_name(name, max_width=28):
+    """按显示宽度截断名称，超出部分以省略号代替。"""
+    if _display_width(name) <= max_width:
+        return name
+    result = []
+    w = 1  # 预留省略号宽度
+    for ch in name:
+        cw = 2 if ord(ch) > 0x2E80 else 1
+        if w + cw > max_width:
+            break
+        result.append(ch)
+        w += cw
+    return ''.join(result) + "…"
+
+
 # -----------------------------------------------------------------------------
 # Operators - 基础操作
 # -----------------------------------------------------------------------------
@@ -611,21 +634,34 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             return
 
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
+        # 三列布局：序号 / 名称(含计数) / 功能按键，均左对齐
         MAX_DISPLAY = 500
+        # split 比例：序号 10% → 名称 65%×余量 → 功能按键 余下部分
+        SEQ_FACTOR = 0.10
+        NAME_FACTOR = 0.65
+
         box = layout.box()
         box.enabled = not is_scanning
         col = box.column(align=True)
 
         sort_icon = 'SORT_DESC' if descending else 'SORT_ASC'
+
+        # 表头
         header = col.row(align=True)
-        header.label(text="#", icon=sort_icon)
-        header.label(text="物体名称")
+        header.alignment = 'LEFT'
+        h_seq = header.split(factor=SEQ_FACTOR, align=True)
+        h_seq.alignment = 'LEFT'
+        h_seq.label(text="#", icon=sort_icon)
+        h_name = header.split(factor=NAME_FACTOR, align=True)
+        h_name.alignment = 'LEFT'
+        h_name.label(text="物体名称")
         if sort_by == 'FACES':
-            header.label(text="面数*")
+            h_name.label(text="面数*")
         elif sort_by == 'VERTS':
-            header.label(text="顶点*")
+            h_name.label(text="顶点*")
         else:
-            header.label(text="三角面*")
+            h_name.label(text="三角面*")
+        header.alignment = 'LEFT'
         header.label(text="", icon='HIDE_OFF')
         header.label(text="", icon='MOD_DECIM')
 
@@ -634,23 +670,32 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         display_stats = stats[:MAX_DISPLAY]
         for i, s in enumerate(display_stats, 1):
             row = col.row(align=True)
-            row.alignment = 'CENTER'
-            row.label(text=str(i))
-            op_name = row.operator(
+            row.alignment = 'LEFT'
+
+            # 序号列
+            seq_col = row.split(factor=SEQ_FACTOR, align=True)
+            seq_col.alignment = 'LEFT'
+            seq_col.label(text=str(i))
+
+            # 名称列（含计数；名称过长按显示宽度截断）
+            name_col = row.split(factor=NAME_FACTOR, align=True)
+            name_col.alignment = 'LEFT'
+            op_name = name_col.operator(
                 "mesh_face_sorter.select_object",
-                text=s["name"],
+                text=_truncate_name(s["name"]),
                 icon='OBJECT_DATA' if s["selected"] else 'MESH_DATA',
                 emboss=False,
             )
             op_name.object_name = s["name"]
-
             if sort_by == 'FACES':
-                row.label(text=format_number(s["faces"]))
+                name_col.label(text=format_number(s["faces"]))
             elif sort_by == 'VERTS':
-                row.label(text=format_number(s["vertices"]))
+                name_col.label(text=format_number(s["vertices"]))
             else:
-                row.label(text=format_number(s["tris"]))
+                name_col.label(text=format_number(s["tris"]))
 
+            # 功能按键列（孤立显示 + 添加简面）
+            row.alignment = 'LEFT'
             op_iso = row.operator(
                 "mesh_face_sorter.isolate",
                 text="",
