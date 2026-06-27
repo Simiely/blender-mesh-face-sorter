@@ -376,8 +376,8 @@ class MESH_OT_FaceSortDeleteObject(bpy.types.Operator):
     """删除指定的单个网格体（带确认对话框）"""
     bl_idname = "mesh_face_sorter.delete_object"
     bl_label = "删除网格体"
-    bl_description = "删除该网格体（可通过 Ctrl+Z 撤销）"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_description = "删除该网格体（不可撤销，请谨慎操作）"
+    bl_options = {'REGISTER'}
 
     object_name: bpy.props.StringProperty()
 
@@ -387,8 +387,9 @@ class MESH_OT_FaceSortDeleteObject(bpy.types.Operator):
             self.report({'WARNING'}, f"未找到网格体：{self.object_name}")
             return {'CANCELLED'}
         name = obj.name
-        bpy.data.objects.remove(obj, do_unlink=True)
+        # 先清缓存再删除，避免 draw() 在删除瞬间访问已失效的弱引用
         invalidate_cache()
+        bpy.data.objects.remove(obj, do_unlink=True)
         self.report({'INFO'}, f"已删除：{name}")
         return {'FINISHED'}
 
@@ -397,7 +398,7 @@ class MESH_OT_FaceSortDeleteObject(bpy.types.Operator):
 
     def draw(self, context):
         self.layout.label(text=f"将删除网格体：{self.object_name}")
-        self.layout.label(text="可通过 Ctrl+Z 撤销", icon='UNDO')
+        self.layout.label(text="此操作不可撤销，请确认", icon='ERROR')
 
 
 # -----------------------------------------------------------------------------
@@ -691,11 +692,13 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         display_stats = stats[:MAX_DISPLAY]
         for s in display_stats:
             # 实时读取选中/隐藏状态（缓存只用于排序与计数，状态实时刷新）
+            # 捕获所有异常：删除/撤销等操作可能让缓存中的 object 弱引用失效，
+            # 触发 ReferenceError / RuntimeError 等，跳过该行避免连锁报错
             try:
                 live_obj = s["object"]
                 is_selected = live_obj.select_get()
                 is_hidden = live_obj.hide_get()
-            except ReferenceError:
+            except Exception:
                 continue
 
             row = col.row(align=True)
