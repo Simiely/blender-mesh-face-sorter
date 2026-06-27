@@ -3,7 +3,7 @@
 > Blender 插件：按面数/顶点/三角面排列场景中的所有网格体，帮助你快速定位高面数模型、批量减面、清理场景。
 
 ![Blender](https://img.shields.io/badge/Blender-3.0%20~%205.1%2B-blue)
-![Version](https://img.shields.io/badge/version-1.5.0-green)
+![Version](https://img.shields.io/badge/version-1.5.1-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ## 功能一览
