@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Blender Mesh Face Sorter — 网格体排序插件</title>
+<link rel="icon" href="../favicon.png" type="image/png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
@@ -353,9 +354,34 @@
     .feat{grid-template-columns:1fr}
     .nav__meta .nav__link-text{display:none}
   }
-</style>
+
+  /* ============ BACK TO HUB ============ */
+  .hub-back{
+    position:fixed;top:0;left:0;right:0;z-index:200;
+    display:flex;align-items:center;justify-content:center;
+    padding:14px 0;
+    pointer-events:none;
+    text-decoration:none;
+    mix-blend-mode:difference;color:#fff;
+  }
+  .hub-back__inner{
+    pointer-events:auto;display:flex;align-items:center;gap:10px;
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:19px;
+    letter-spacing:-.01em;cursor:pointer;transition:opacity .3s;
+  }
+  .hub-back__inner:hover{opacity:.7}
+  .hub-back__logo{height:1.12rem;width:auto;display:block;vertical-align:middle}
+
+  </style>
 </head>
 <body>
+
+<a class="hub-back" href="https://simiely.github.io/hub-world/" aria-label="Hub World">
+  <span class="hub-back__inner">
+    <img class="hub-back__logo" src="../logo.png" alt="Hub World">
+    <span>Hub World</span>
+  </span>
+</a>
 
 <nav class="nav">
   <div class="nav__brand">
