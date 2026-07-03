@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Mesh Face Sorter — Blender 网格体排序插件</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#161110;
+    --bg-warm:#1E1817;
+    --ink:#E8E4E1;
+    --ink-soft:#A89F9A;
+    --ink-faint:#6E6560;
+    --rose:#E55D6B;
+    --rose-deep:#C94D5A;
+    --rose-soft:#F7A8AE;
+    --cream:#2A2220;
+    --hairline:rgba(255,255,255,.08);
+    --ease:cubic-bezier(.7,.05,.2,1);
+    --ease-out:cubic-bezier(.16,1,.3,1);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Geist",-apple-system,sans-serif;
+    font-weight:400;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  /* grain overlay */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+    opacity:.06;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  ::selection{background:var(--rose);color:#fff}
+
+  /* ============ DECK ============ */
+  .deck{
+    height:100vh;
+    height:100dvh;
+    overflow-y:auto;
+    scroll-snap-type:y mandatory;
+    scroll-behavior:smooth;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .deck::-webkit-scrollbar{display:none}
+
+  .slide{
+    position:relative;
+    min-height:100vh;
+    min-height:100dvh;
+    scroll-snap-align:start;
+    scroll-snap-stop:always;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding:clamp(72px,9vh,120px) clamp(24px,5vw,64px) clamp(56px,7vh,88px);
+    overflow:hidden;
+  }
+
+  /* ============ NAV ============ */
+  .nav{
+    position:fixed;top:0;left:0;right:0;z-index:100;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px clamp(20px,4vw,40px);
+    mix-blend-mode:difference;color:#fff;pointer-events:none;
+  }
+  .nav > *{pointer-events:auto}
+  .nav__brand{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:19px;
+    letter-spacing:-.01em;display:flex;align-items:center;gap:10px;
+  }
+  .nav__brand .dot{
+    width:9px;height:9px;border-radius:50%;background:var(--rose);
+    display:inline-block;animation:pulse 2.4s var(--ease) infinite;
+  }
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.55}}
+  .nav__meta{display:flex;align-items:center;gap:24px;font-size:13px;font-family:"Geist Mono",monospace}
+  .nav__meta a{color:inherit;text-decoration:none;position:relative}
+  .nav__meta a::after{content:"";position:absolute;left:0;bottom:-3px;height:1px;width:0;background:currentColor;transition:width .4s var(--ease)}
+  .nav__meta a:hover::after{width:100%}
+  .nav__ver{padding:5px 11px;border:1px solid currentColor;border-radius:100px;font-size:11px}
+
+  /* ============ DOTS ============ */
+  .dots{
+    position:fixed;right:clamp(16px,2.4vw,32px);top:50%;transform:translateY(-50%);
+    z-index:100;display:flex;flex-direction:column;gap:12px;
+  }
+  .dot-btn{
+    width:3px;height:3px;border-radius:50%;border:none;cursor:pointer;
+    background:rgba(255,255,255,.18);padding:0;position:relative;opacity:.5;
+    transition:all .4s var(--ease);
+  }
+  .dot-btn.active{background:var(--rose);transform:scale(1.5);opacity:1}
+  .dot-btn::after{
+    content:attr(data-label);position:absolute;right:18px;top:50%;transform:translateY(-50%);
+    font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-soft);white-space:nowrap;opacity:0;transition:opacity .3s var(--ease);pointer-events:none;
+  }
+  .dot-btn:hover::after{opacity:1}
+  .dot-btn.active::after{color:var(--rose)}
+
+  /* hint */
+  .hint{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;
+    font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink-faint);display:flex;align-items:center;gap:8px;
+    opacity:1;transition:opacity .5s var(--ease);
+    pointer-events:none;
+  }
+  .hint.hide{opacity:0}
+  .hint .mouse{width:16px;height:26px;border:1.5px solid currentColor;border-radius:10px;position:relative}
+  .hint .mouse::after{content:"";position:absolute;left:50%;top:5px;transform:translateX(-50%);width:2px;height:5px;background:currentColor;border-radius:2px;animation:wheel 1.6s var(--ease) infinite}
+  @keyframes wheel{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,8px)}}
+
+  /* ============ ANIMATION ============ */
+  .anim{opacity:0;transform:translateY(34px);transition:opacity .9s var(--ease-out),transform .9s var(--ease-out)}
+  .slide.is-active .anim{opacity:1;transform:none}
+  .slide.is-active .anim.d1{transition-delay:.10s}
+  .slide.is-active .anim.d2{transition-delay:.20s}
+  .slide.is-active .anim.d3{transition-delay:.30s}
+  .slide.is-active .anim.d4{transition-delay:.40s}
+  .slide.is-active .anim.d5{transition-delay:.50s}
+  .slide.is-active .anim.d6{transition-delay:.60s}
+  .slide.is-active .anim.d7{transition-delay:.70s}
+  .slide.is-active .anim.d8{transition-delay:.80s}
+  .anim.from-l{transform:translateX(-46px)}
+  .anim.from-r{transform:translateX(46px)}
+  .anim.scale{transform:scale(.9)}
+  .anim.clip{clip-path:inset(0 0 100% 0);transform:none}
+
+  /* ============ SECTION HEAD ============ */
+  .sec__head{
+    display:flex;align-items:baseline;gap:20px;
+    margin-bottom:clamp(28px,4vh,52px);padding-bottom:16px;
+    border-bottom:1px solid var(--hairline);
+  }
+  .sec__num{font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.15em;color:var(--ink-faint)}
+  .sec__title{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:500;
+    font-size:clamp(30px,4.4vw,60px);line-height:1;letter-spacing:-.025em;
+  }
+  .sec__title em{font-style:italic;color:var(--rose);font-weight:600}
+
+  .eyebrow{
+    font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-soft);display:flex;align-items:center;gap:14px;margin-bottom:24px;
+  }
+  .eyebrow .bar{width:42px;height:1px;background:var(--ink)}
+
+  /* ============ SLIDE 1: HERO ============ */
+  .hero{background:var(--bg)}
+  .hero__inner{
+    display:grid;grid-template-columns:1.4fr .9fr;gap:40px;align-items:center;width:100%;max-width:1280px;margin:0 auto;
+  }
+  .hero__title{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:500;
+    font-size:clamp(64px,13vw,200px);line-height:.86;letter-spacing:-.045em;
+    transition:transform .6s var(--ease);
+  }
+  .hero__title .l2{display:block;padding-left:.32em}
+  .hero__title em{font-style:italic;font-weight:600;color:var(--rose)}
+
+  .hero__feat{
+    margin-top:32px;max-width:620px;padding:24px 28px;background:var(--bg-warm);
+    border:1px solid var(--ink);border-radius:18px;position:relative;
+    box-shadow:14px 14px 0 var(--rose);
+    transition:box-shadow .4s var(--ease),transform .4s var(--ease);
+    will-change:transform;
+  }
+  .hero__feat-label{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--rose);margin-bottom:12px;
+  }
+  .hero__feat-label::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--rose)}
+  .hero__feat-text{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:600;
+    font-size:clamp(18px,2vw,26px);line-height:1.4;letter-spacing:-.015em;color:var(--ink);
+  }
+  .hero__feat-text b{color:var(--rose);font-weight:700}
+
+  .hero__sub{margin-top:28px;max-width:520px;font-size:clamp(14px,1.4vw,17px);line-height:1.55;color:var(--ink-soft)}
+  .hero__sub b{color:var(--ink);font-weight:600}
+
+  .blender-badge{
+    justify-self:end;align-self:center;text-align:right;position:relative;
+  }
+  .blender-badge__icon{font-family:"Bricolage Grotesque",sans-serif;font-weight:300;font-size:clamp(72px,12vw,160px);line-height:1;letter-spacing:-.02em;margin-bottom:12px}
+  .blender-badge__label{font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+  .blender-badge__tags{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+  .blender-badge__tags span{
+    padding:5px 12px;border:1px solid var(--hairline);border-radius:100px;
+    font-family:"Geist Mono",monospace;font-size:11px;color:var(--ink-soft);
+  }
+
+  /* ticker */
+  .ticker{
+    position:absolute;left:0;right:0;bottom:0;
+    border-top:1px solid var(--ink);background:var(--bg-warm);overflow:hidden;padding:13px 0;
+  }
+  .ticker__track{display:flex;white-space:nowrap;animation:marquee 36s linear infinite}
+  .ticker__item{
+    font-family:"Bricolage Grotesque",sans-serif;font-style:italic;font-weight:400;font-size:clamp(20px,2vw,28px);
+    padding:0 32px;color:var(--ink);display:flex;align-items:center;gap:32px;
+  }
+  .ticker__item::after{content:"✦";color:var(--rose);font-style:normal;font-size:15px}
+  @keyframes marquee{to{transform:translateX(-50%)}}
+
+  /* ============ SLIDE 2: PROBLEM ============ */
+  .problem{background:var(--rose);color:#fff;position:relative}
+  .problem::before{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at var(--mx,70%) var(--my,40%), rgba(255,255,255,.22), transparent 55%);
+    pointer-events:none;transition:background .2s linear;
+  }
+  .problem__inner{position:relative;max-width:1100px;margin:0 auto;width:100%}
+  .problem__eyebrow{
+    font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    opacity:.85;margin-bottom:32px;display:flex;align-items:center;gap:14px;
+  }
+  .problem__eyebrow .bar{width:42px;height:1px;background:#fff}
+  .problem__title{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:500;
+    font-size:clamp(44px,8vw,132px);line-height:.95;letter-spacing:-.035em;max-width:16ch;
+  }
+  .problem__title em{font-style:italic;font-weight:600}
+  .problem__sub{margin-top:36px;max-width:620px;font-size:clamp(15px,1.6vw,18px);line-height:1.6;opacity:.92}
+  .problem__stat{margin-top:44px;display:flex;align-items:baseline;gap:24px;flex-wrap:wrap}
+  .problem__stat .item{display:flex;align-items:baseline;gap:12px}
+  .problem__stat .n{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:300;font-size:clamp(64px,10vw,110px);line-height:.9;
+    letter-spacing:-.03em;
+  }
+  .problem__stat .l{font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;max-width:12ch}
+
+  /* ============ SLIDE 3: FEATURES ============ */
+  .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ink);border:1px solid var(--ink);width:100%;max-width:1180px;margin:0 auto}
+  .feat__cell{
+    background:var(--bg);padding:clamp(32px,4vw,48px) clamp(24px,3vw,32px);
+    min-height:clamp(220px,32vh,300px);
+    display:flex;flex-direction:column;justify-content:space-between;
+    transition:background .45s var(--ease),color .45s var(--ease);position:relative;overflow:hidden;cursor:default;
+  }
+  .feat__cell::before{content:"";position:absolute;left:0;top:0;height:100%;width:0;background:var(--rose);transition:width .5s var(--ease);z-index:0}
+  .feat__cell:hover{color:#fff}
+  .feat__cell:hover::before{width:100%}
+  .feat__cell > *{position:relative;z-index:1}
+  .feat__num{font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.15em;opacity:.6}
+  .feat__icon{font-size:clamp(36px,4.5vw,52px);margin:14px 0;line-height:1;transition:transform .5s var(--ease)}
+  .feat__cell:hover .feat__icon{transform:translateX(6px) scale(1.08)}
+  .feat__name{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:clamp(20px,2.2vw,24px);line-height:1.1;letter-spacing:-.015em;margin-bottom:10px}
+  .feat__desc{font-size:clamp(12px,1.25vw,14px);line-height:1.55;opacity:.72}
+
+  /* ============ SLIDE 4: USAGE ============ */
+  .how__grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--ink);border:1px solid var(--ink);
+    width:100%;max-width:1180px;margin:0 auto;
+  }
+  .how__cell{
+    background:var(--bg-warm);padding:clamp(28px,4vw,52px) clamp(24px,3vw,44px);
+    min-height:clamp(200px,28vh,300px);
+    display:flex;flex-direction:column;justify-content:space-between;position:relative;
+    transition:background .5s var(--ease);
+  }
+  .how__cell:hover{background:#2A2422}
+  .how__cell--accent{background:#1A1715}
+  .how__cell--accent:hover{background:#2a2421}
+  .how__step{font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.18em;opacity:.6}
+  .how__icon{font-size:clamp(48px,7vw,80px);line-height:1;margin:14px 0;transition:transform .5s var(--ease)}
+  .how__cell:hover .how__icon{transform:scale(1.08) rotate(-3deg)}
+  .how__cell--accent .how__icon{color:var(--rose)}
+  .how__name{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:clamp(20px,2.4vw,28px);line-height:1.05;letter-spacing:-.02em;margin-bottom:10px}
+  .how__desc{font-size:clamp(13px,1.3vw,15px);line-height:1.55;opacity:.75;max-width:36ch}
+  .how__flow{
+    grid-column:1/-1;background:var(--cream);padding:16px clamp(20px,3vw,44px);
+    display:flex;align-items:center;flex-wrap:wrap;gap:12px;
+    font-family:"Geist Mono",monospace;font-size:clamp(10px,1vw,12px);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .how__flow .arrow{color:var(--rose);font-family:"Bricolage Grotesque",sans-serif;font-size:16px}
+
+  /* ============ SLIDE 5: INSTALL ============ */
+  .install{background:var(--bg)}
+  .install__grid{display:grid;grid-template-columns:1.2fr 1fr;gap:clamp(40px,5vw,80px);width:100%;max-width:1180px;margin:0 auto;align-items:start}
+  .install__steps{list-style:none;display:flex;flex-direction:column;gap:0}
+  .install__step{
+    display:flex;align-items:flex-start;gap:18px;
+    padding:16px 0;border-bottom:1px solid var(--hairline);
+    transition:opacity .3s var(--ease);
+  }
+  .install__step:last-child{border-bottom:none}
+  .install__step-num{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:300;font-size:20px;line-height:1.4;
+    color:var(--rose);flex-shrink:0;width:28px;
+  }
+  .install__step-body{flex:1}
+  .install__step-title{font-weight:600;font-size:14px;margin-bottom:4px}
+  .install__step-desc{font-size:13px;color:var(--ink-soft);line-height:1.5}
+  .install__code{
+    background:var(--cream);border:1px solid var(--hairline);border-radius:12px;padding:16px 20px;
+    font-family:"Geist Mono",monospace;font-size:clamp(12px,1.1vw,13px);line-height:1.7;
+    color:var(--ink);overflow-x:auto;
+  }
+  .install__code .hl{color:var(--rose)}
+  .install__code .cm{color:var(--ink-faint)}
+
+  /* ============ SLIDE 6: CTA ============ */
+  .cta{color:#E8E4E1;text-align:center;position:relative;overflow:hidden}
+  .cta::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120vw;height:120vw;max-width:1000px;max-height:1000px;border-radius:50%;background:radial-gradient(circle at 50% 50%, rgba(229,93,107,.28), transparent 55%)}
+  .cta__inner{position:relative;max-width:900px;margin:0 auto}
+  .cta__eyebrow{font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--rose-soft);margin-bottom:28px}
+  .cta__title{font-family:"Bricolage Grotesque",sans-serif;font-weight:400;font-size:clamp(40px,7.5vw,124px);line-height:.94;letter-spacing:-.035em}
+  .cta__title em{font-style:italic;color:var(--rose);font-weight:600}
+  .cta__btns{margin-top:44px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+  .btn-primary{
+    display:inline-flex;align-items:center;gap:14px;
+    background:var(--rose);color:#fff;border:none;padding:16px 36px;border-radius:100px;
+    font-family:"Geist",sans-serif;font-size:15px;font-weight:600;text-decoration:none;
+    cursor:pointer;transition:all .35s var(--ease);box-shadow:0 8px 24px rgba(229,93,107,.35);
+  }
+  .btn-primary:hover{background:var(--rose-deep);transform:translateY(-3px);box-shadow:0 12px 32px rgba(229,93,107,.45)}
+  .btn-ghost{
+    display:inline-flex;align-items:center;gap:14px;
+    background:transparent;color:var(--ink);border:1px solid var(--hairline);padding:16px 36px;border-radius:100px;
+    font-family:"Geist",sans-serif;font-size:15px;font-weight:500;text-decoration:none;
+    cursor:pointer;transition:all .35s var(--ease);
+  }
+  .btn-ghost:hover{background:var(--cream);border-color:var(--ink-soft);transform:translateY(-3px)}
+  .cta__meta{margin-top:32px;font-size:13px;color:var(--ink-soft)}
+  .cta__meta a{color:var(--rose-soft);text-decoration:none}
+  .cta__meta a:hover{text-decoration:underline}
+
+  /* ============ RESPONSIVE ============ */
+  @media(max-width:860px){
+    .hero__inner{grid-template-columns:1fr;gap:24px}
+    .blender-badge{text-align:left;justify-self:start}
+    .blender-badge__tags{justify-content:flex-start}
+    .feat{grid-template-columns:1fr 1fr}
+    .how__grid{grid-template-columns:1fr}
+    .install__grid{grid-template-columns:1fr}
+  }
+  @media(max-width:520px){
+    .feat{grid-template-columns:1fr}
+    .nav__meta .nav__link-text{display:none}
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__brand">
+    <span class="dot"></span>
+    Mesh Face Sorter
+  </div>
+  <div class="nav__meta">
+    <a href="https://github.com/Simiely/blender-mesh-face-sorter" target="_blank" class="nav__link-text">GitHub</a>
+    <span class="nav__ver">v1.6.0</span>
+  </div>
+</nav>
+
+<div class="dots" id="dots">
+  <button class="dot-btn active" data-index="0" data-label="Home" aria-label="Home"></button>
+  <button class="dot-btn" data-index="1" data-label="Problem" aria-label="Problem"></button>
+  <button class="dot-btn" data-index="2" data-label="Features" aria-label="Features"></button>
+  <button class="dot-btn" data-index="3" data-label="Usage" aria-label="Usage"></button>
+  <button class="dot-btn" data-index="4" data-label="Install" aria-label="Install"></button>
+  <button class="dot-btn" data-index="5" data-label="CTA" aria-label="CTA"></button>
+</div>
+
+<div class="hint" id="hint">
+  <span class="mouse"></span>
+  <span>Scroll</span>
+</div>
+
+<div class="deck" id="deck">
+
+  <!-- ============================================ -->
+  <!-- SLIDE 1: HERO -->
+  <!-- ============================================ -->
+  <section class="slide hero">
+    <div class="hero__inner">
+      <div>
+        <div class="anim d1">
+          <h1 class="hero__title">
+            Mesh<br>
+            <span class="l2"><em>Face</em> Sorter</span>
+          </h1>
+        </div>
+        <div class="hero__feat anim d2">
+          <div class="hero__feat-label">Blender Add-on</div>
+          <div class="hero__feat-text">
+            按面数 / 顶点 / 存储大小 <b>排列</b> 场景中所有网格体
+          </div>
+        </div>
+        <div class="hero__sub anim d3">
+          快速定位高面数模型 · 批量减面 · 清理场景 · <b>一切尽在侧边栏</b>
+        </div>
+      </div>
+      <div class="blender-badge anim scale d4">
+        <div class="blender-badge__label">Compatible</div>
+        <div class="blender-badge__icon">🧊</div>
+        <div class="blender-badge__tags">
+          <span>Blender 3.0~5.1+</span>
+          <span>MIT</span>
+          <span>Python</span>
+        </div>
+      </div>
+    </div>
+    <div class="ticker">
+      <div class="ticker__track">
+        <span class="ticker__item">Sort by faces</span>
+        <span class="ticker__item">Sort by vertices</span>
+        <span class="ticker__item">Sort by storage</span>
+        <span class="ticker__item">Batch Decimate</span>
+        <span class="ticker__item">Isolate display</span>
+        <span class="ticker__item">MD report export</span>
+        <span class="ticker__item">Unused data cleanup</span>
+        <span class="ticker__item">Sort by faces</span>
+        <span class="ticker__item">Sort by vertices</span>
+        <span class="ticker__item">Sort by storage</span>
+        <span class="ticker__item">Batch Decimate</span>
+        <span class="ticker__item">Isolate display</span>
+        <span class="ticker__item">MD report export</span>
+        <span class="ticker__item">Unused data cleanup</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <!-- SLIDE 2: PROBLEM -->
+  <!-- ============================================ -->
+  <section class="slide problem" data-mouse-parallax>
+    <div class="problem__inner">
+      <div class="problem__eyebrow anim d1">
+        <span class="bar"></span> The Struggle
+      </div>
+      <h2 class="problem__title anim d2">
+        场景里<br><em>几百个</em>网格体<br>谁在吃资源？
+      </h2>
+      <p class="problem__sub anim d3">
+        大型 3D 场景中，高面数模型混在低面数物体里难以定位。
+        手动一个个检查效率极低，减面全靠猜 —— <strong>Mesh Face Sorter 让一切一目了然。</strong>
+      </p>
+      <div class="problem__stat anim d4">
+        <div class="item">
+          <span class="n">1.2M</span>
+          <span class="l">单场景<br>常见总面数</span>
+        </div>
+        <div class="item">
+          <span class="n">500</span>
+          <span class="l">列表上限<br>物体数量</span>
+        </div>
+        <div class="item">
+          <span class="n">1</span>
+          <span class="l">点击即可<br>排序定位</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <!-- SLIDE 3: FEATURES -->
+  <!-- ============================================ -->
+  <section class="slide">
+    <div class="sec__head anim d1">
+      <span class="sec__num">02</span>
+      <h2 class="sec__title">全部<em>功能</em></h2>
+    </div>
+    <div class="feat">
+      <div class="feat__cell anim scale d2">
+        <span class="feat__num">01</span>
+        <div>
+          <div class="feat__icon">📊</div>
+          <div class="feat__name">多维度排序</div>
+          <div class="feat__desc">按面数 / 顶点数 / 存储大小排序，升降序一键切换。瞬时重排，无需重新扫描。</div>
+        </div>
+      </div>
+      <div class="feat__cell anim scale d3">
+        <span class="feat__num">02</span>
+        <div>
+          <div class="feat__icon">✂️</div>
+          <div class="feat__name">批量减面</div>
+          <div class="feat__desc">选中物体批量添加 Decimate 修改器，支持自定义保留比例。也可单独为某个物体添加。</div>
+        </div>
+      </div>
+      <div class="feat__cell anim scale d4">
+        <span class="feat__num">03</span>
+        <div>
+          <div class="feat__icon">👁️</div>
+          <div class="feat__name">孤立显示</div>
+          <div class="feat__desc">点击 👁 图标隐藏其他所有网格体，专注检查当前物体，彻底告别手动切换显示。</div>
+        </div>
+      </div>
+      <div class="feat__cell anim scale d5">
+        <span class="feat__num">04</span>
+        <div>
+          <div class="feat__icon">📋</div>
+          <div class="feat__name">MD 报表导出</div>
+          <div class="feat__desc">导出完整 Markdown 表格，含场景统计概览和每个物体的面数/顶点/存储详情。</div>
+        </div>
+      </div>
+      <div class="feat__cell anim scale d6">
+        <span class="feat__num">05</span>
+        <div>
+          <div class="feat__icon">🗑️</div>
+          <div class="feat__name">智能清理</div>
+          <div class="feat__desc">删除面数为 0 的空网格体（带确认框），递归清理未使用的数据块，一键恢复整洁场景。</div>
+        </div>
+      </div>
+      <div class="feat__cell anim scale d7">
+        <span class="feat__num">06</span>
+        <div>
+          <div class="feat__icon">⚡</div>
+          <div class="feat__name">扫描进度</div>
+          <div class="feat__desc">大场景扫描时显示百分比进度条，扫描期间自动禁用操作按钮，避免误操作。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <!-- SLIDE 4: USAGE -->
+  <!-- ============================================ -->
+  <section class="slide">
+    <div class="sec__head anim d1">
+      <span class="sec__num">03</span>
+      <h2 class="sec__title">快速<em>上手</em></h2>
+    </div>
+    <div class="how__grid">
+      <div class="how__cell how__cell--accent anim from-l d2">
+        <span class="how__step">01</span>
+        <div class="how__icon">🔍</div>
+        <div>
+          <div class="how__name">打开侧边栏</div>
+          <div class="how__desc">3D 视图中按 <strong>N</strong> 键 → 侧边栏 → <strong>"网格排序器"</strong> 标签页，面板自动扫描场景所有网格体。</div>
+        </div>
+      </div>
+      <div class="how__cell anim from-r d3">
+        <span class="how__step">02</span>
+        <div class="how__icon">📶</div>
+        <div>
+          <div class="how__name">排序与定位</div>
+          <div class="how__desc">切换排序方式（面数 / 顶点 / 存储大小），点击任意物体名称即选中并设为活动对象。</div>
+        </div>
+      </div>
+      <div class="how__cell anim from-l d4">
+        <span class="how__step">03</span>
+        <div class="how__icon">✂️</div>
+        <div>
+          <div class="how__name">执行减面</div>
+          <div class="how__desc">选中高面数物体 → 调整保留比例 → 点击「减面修改器」批量添加。点击 🔽 可为单个物体添加。</div>
+        </div>
+      </div>
+      <div class="how__cell how__cell--accent anim from-r d5">
+        <span class="how__step">04</span>
+        <div class="how__icon">✨</div>
+        <div>
+          <div class="how__name">清理与导出</div>
+          <div class="how__desc">点击「删除无面网格体」+「清理未使用数据」彻底清洁场景。点击「导出 MD 报表」存档备案。</div>
+        </div>
+      </div>
+      <div class="how__flow anim d6">
+        <span>安装插件</span>
+        <span class="arrow">→</span>
+        <span>打开面板</span>
+        <span class="arrow">→</span>
+        <span>扫描场景</span>
+        <span class="arrow">→</span>
+        <span>排序检查</span>
+        <span class="arrow">→</span>
+        <span>批量减面</span>
+        <span class="arrow">→</span>
+        <span>清理导出</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <!-- SLIDE 5: INSTALL -->
+  <!-- ============================================ -->
+  <section class="slide install">
+    <div class="sec__head anim d1">
+      <span class="sec__num">04</span>
+      <h2 class="sec__title">安装<em>指南</em></h2>
+    </div>
+    <div class="install__grid">
+      <div>
+        <ul class="install__steps">
+          <li class="install__step anim d2">
+            <span class="install__step-num">1</span>
+            <div class="install__step-body">
+              <div class="install__step-title">下载插件</div>
+              <div class="install__step-desc">从 GitHub 仓库下载 <strong>mesh_face_sorter.py</strong></div>
+            </div>
+          </li>
+          <li class="install__step anim d3">
+            <span class="install__step-num">2</span>
+            <div class="install__step-body">
+              <div class="install__step-title">安装到 Blender</div>
+              <div class="install__step-desc">编辑 → 偏好设置 → 插件 → 安装 → 选择下载的文件</div>
+            </div>
+          </li>
+          <li class="install__step anim d4">
+            <span class="install__step-num">3</span>
+            <div class="install__step-body">
+              <div class="install__step-title">启用插件</div>
+              <div class="install__step-desc">搜索 <strong>"Blender Mesh Face Sorter"</strong>，勾选启用</div>
+            </div>
+          </li>
+          <li class="install__step anim d5">
+            <span class="install__step-num">4</span>
+            <div class="install__step-body">
+              <div class="install__step-title">开始使用</div>
+              <div class="install__step-desc">3D 视图中按 <strong>N</strong> 键 → 侧边栏 → 网格排序器</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="anim d4">
+        <div class="install__code">
+          <span class="cm"># 克隆仓库（可选）</span><br>
+          git clone https://github.com/<br>
+          <span class="hl">Simiely</span>/<span class="hl">blender-mesh-face-sorter</span>.git
+        </div>
+        <div class="install__code" style="margin-top:12px;padding:12px 20px">
+          <span class="cm">● Blender 3.0 ~ 5.1+</span><br>
+          <span class="cm">● Windows / macOS / Linux</span><br>
+          <span class="cm">● 仅使用稳定核心 API</span>
+        </div>
+        <div style="margin-top:20px;">
+          <a href="https://github.com/Simiely/blender-mesh-face-sorter/releases" target="_blank" class="btn-primary" style="display:inline-flex;font-size:13px;padding:12px 28px;">
+            ⬇ 下载最新版
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <!-- SLIDE 6: CTA -->
+  <!-- ============================================ -->
+  <section class="slide cta">
+    <div class="cta__inner">
+      <div class="cta__eyebrow anim d1">Ready to optimize?</div>
+      <h2 class="cta__title anim d2">
+        给你的 Blender 场景<br>来一次<em>网格体检</em>
+      </h2>
+      <div class="cta__btns anim d3">
+        <a href="https://github.com/Simiely/blender-mesh-face-sorter" target="_blank" class="btn-primary">
+          ★ Star on GitHub
+        </a>
+        <a href="https://github.com/Simiely/blender-mesh-face-sorter/issues" target="_blank" class="btn-ghost">
+          💬 反馈问题
+        </a>
+      </div>
+      <p class="cta__meta anim d4">
+        MIT License · Made by <a href="https://github.com/Simiely" target="_blank">Simiely</a>
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  const deck = document.getElementById('deck');
+  const slides = deck.querySelectorAll('.slide');
+  const dots = document.querySelectorAll('.dot-btn');
+  const hint = document.getElementById('hint');
+
+  let activeIndex = -1;
+  let ticking = false;
+
+  // Track which slide is active
+  function updateActive(){
+    const scrollTop = deck.scrollTop;
+    const viewHeight = deck.clientHeight;
+
+    // Find closest slide to viewport center
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    slides.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      const dist = Math.abs(mid - viewHeight / 2);
+      if(dist < bestDist){
+        bestDist = dist;
+        bestIdx = i;
+      }
+    });
+
+    if(bestIdx !== activeIndex){
+      activeIndex = bestIdx;
+      dots.forEach((d, i) => {
+        d.classList.toggle('active', i === activeIndex);
+      });
+      slides.forEach((s, i) => {
+        s.classList.toggle('is-active', i === activeIndex);
+      });
+    }
+
+    // Hide hint after first scroll
+    if(scrollTop > 10){
+      hint.classList.add('hide');
+    } else {
+      hint.classList.remove('hide');
+    }
+  }
+
+  deck.addEventListener('scroll', () => {
+    if(!ticking){
+      requestAnimationFrame(() => {
+        updateActive();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+
+  // Dot click navigation
+  dots.forEach((dot) => {
+    dot.addEventListener('click', () => {
+      const idx = parseInt(dot.dataset.index);
+      const target = slides[idx];
+      if(target){
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // Mouse parallax for problem slide
+  const problemSlide = document.querySelector('.problem');
+  if(problemSlide){
+    document.addEventListener('mousemove', (e) => {
+      const rect = problemSlide.getBoundingClientRect();
+      if(rect.top < window.innerHeight && rect.bottom > 0){
+        const x = (e.clientX / window.innerWidth) * 100;
+        const y = (e.clientY / window.innerHeight) * 100;
+        problemSlide.style.setProperty('--mx', x + '%');
+        problemSlide.style.setProperty('--my', y + '%');
+      }
+    });
+  }
+
+  // Init first slide active
+  updateActive();
+})();
+</script>
+</body>
+</html>
