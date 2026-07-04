@@ -17,6 +17,7 @@
     --ink-faint:#6E6560;
     --rose:#E55D6B;
     --rose-deep:#C94D5A;
+    --rose-rgb:229,93,107;
     --rose-soft:#F7A8AE;
     --cream:#2A2220;
     --hairline:rgba(255,255,255,.08);
@@ -91,6 +92,10 @@
   .nav__meta a::after{content:"";position:absolute;left:0;bottom:-3px;height:1px;width:0;background:currentColor;transition:width .4s var(--ease)}
   .nav__meta a:hover::after{width:100%}
   .nav__ver{padding:5px 11px;border:1px solid currentColor;border-radius:100px;font-size:11px}
+  /* 版本号单独：取消下划线，hover 时填充主题色反白文字 */
+  #nav-version-link::after{display:none}
+  #nav-version-link .nav__ver{transition:all .35s var(--ease);display:inline-block}
+  #nav-version-link:hover .nav__ver{background:var(--rose);border-color:var(--rose);color:#fff}
 
   /* ============ DOTS ============ */
   .dots{
@@ -317,7 +322,7 @@
 
   /* ============ SLIDE 6: CTA ============ */
   .cta{color:#E8E4E1;text-align:center;position:relative;overflow:hidden}
-  .cta::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120vw;height:120vw;max-width:1000px;max-height:1000px;border-radius:50%;background:radial-gradient(circle at 50% 50%, rgba(229,93,107,.28), transparent 55%)}
+  .cta::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120vw;height:120vw;max-width:1000px;max-height:1000px;border-radius:50%;background:radial-gradient(circle at 50% 50%, rgba(var(--rose-rgb), .28), transparent 55%)}
   .cta__inner{position:relative;max-width:900px;margin:0 auto}
   .cta__eyebrow{font-family:"Geist Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--rose-soft);margin-bottom:28px}
   .cta__title{font-family:"Bricolage Grotesque",sans-serif;font-weight:400;font-size:clamp(40px,7.5vw,124px);line-height:.94;letter-spacing:-.035em}
@@ -327,9 +332,9 @@
     display:inline-flex;align-items:center;gap:14px;
     background:var(--rose);color:#fff;border:none;padding:16px 36px;border-radius:100px;
     font-family:"Geist",sans-serif;font-size:15px;font-weight:600;text-decoration:none;
-    cursor:pointer;transition:all .35s var(--ease);box-shadow:0 8px 24px rgba(229,93,107,.35);
+    cursor:pointer;transition:all .35s var(--ease);box-shadow:0 8px 24px rgba(var(--rose-rgb), .35);
   }
-  .btn-primary:hover{background:var(--rose-deep);transform:translateY(-3px);box-shadow:0 12px 32px rgba(229,93,107,.45)}
+  .btn-primary:hover{background:var(--rose-deep);transform:translateY(-3px);box-shadow:0 12px 32px rgba(var(--rose-rgb), .45)}
   .btn-ghost{
     display:inline-flex;align-items:center;gap:14px;
     background:transparent;color:var(--ink);border:1px solid var(--hairline);padding:16px 36px;border-radius:100px;
@@ -340,24 +345,6 @@
   .cta__meta{margin-top:32px;font-size:13px;color:var(--ink-soft)}
   .cta__meta a{color:var(--rose-soft);text-decoration:none}
   .cta__meta a:hover{text-decoration:underline}
-
-  /* ============ RESPONSIVE ============ */
-  @media(max-width:860px){
-    .hero__inner{grid-template-columns:1fr;gap:24px}
-    .blender-badge{text-align:left;justify-self:start}
-    .blender-badge__tags{justify-content:flex-start}
-    .feat{grid-template-columns:1fr 1fr}
-    .how__grid{grid-template-columns:1fr}
-    .install__grid{grid-template-columns:1fr}
-  }
-  @media(max-width:520px){
-    .feat{grid-template-columns:1fr}
-    .nav__meta .nav__link-text{display:none}
-  }
-  @media(max-width:768px){
-    .nav__brand{display:none}
-    .hub-back{justify-content:flex-start;padding:14px clamp(20px,4vw,40px)}
-  }
 
   /* ============ BACK TO HUB ============ */
   .hub-back{
@@ -376,9 +363,32 @@
   .hub-back__inner:hover{opacity:.7}
   .hub-back__logo{height:1.12rem;width:auto;display:block;vertical-align:middle}
 
-  </style>
+  /* ============ RESPONSIVE ============ */
+  @media(max-width:860px){
+    .hero__inner{grid-template-columns:1fr;gap:24px}
+    .blender-badge{text-align:left;justify-self:start}
+    .blender-badge__tags{justify-content:flex-start}
+    .feat{grid-template-columns:1fr 1fr}
+    .how__grid{grid-template-columns:1fr}
+    .install__grid{grid-template-columns:1fr}
+  }
+  @media(max-width:520px){
+    .feat{grid-template-columns:1fr}
+    .nav__meta .nav__link-text{display:none}
+  }
+  @media(max-width:768px){
+    .nav__brand{display:none}
+    .nav{justify-content:flex-end}
+    .hub-back{justify-content:flex-start;padding:14px clamp(20px,4vw,40px)}
+  }
+
+  /* ============ RESPONSIVE 860px（cont'd）============ */
 </head>
 <body>
+
+<!-- ====================================================================
+  ★★★ 模板配置区块 — 如需后期迁移到 CONFIG 架构，参考 hub-world 模板 ★★★
+  ==================================================================== -->
 
 <a class="hub-back" href="https://simiely.github.io/hub-world/" aria-label="Hub World">
   <span class="hub-back__inner">
@@ -390,11 +400,11 @@
 <nav class="nav">
   <div class="nav__brand">
     <span class="dot"></span>
-    Blender Mesh Face Sorter
+    <span id="brand-name">Blender Mesh Face Sorter</span>
   </div>
   <div class="nav__meta">
     <a href="https://github.com/Simiely/blender-mesh-face-sorter" target="_blank" class="nav__link-text">GitHub</a>
-    <span class="nav__ver">v1.6.0</span>
+    <a href="https://github.com/Simiely/blender-mesh-face-sorter" target="_blank" id="nav-version-link" style="text-decoration:none;color:inherit"><span class="nav__ver">v1.6.0</span></a>
   </div>
 </nav>
 
@@ -422,24 +432,24 @@
       <div>
         <div class="anim d1">
           <h1 class="hero__title">
-            Blender<br>
-            <span class="l2">Mesh <em>Face</em> Sorter</span>
+            <span id="hero-title-1">Blender</span><br>
+            <span class="l2"><span id="hero-title-2">Mesh</span> <em id="hero-title-em">Face</em> Sorter</span>
           </h1>
         </div>
         <div class="hero__feat anim d2">
-          <div class="hero__feat-label">Blender Add-on</div>
-          <div class="hero__feat-text">
+          <div class="hero__feat-label" id="hero-feat-label">Blender Add-on</div>
+          <div class="hero__feat-text" id="hero-feat-text">
             按面数 / 顶点 / 存储大小 <b>排列</b> 场景中所有网格体
           </div>
         </div>
-        <div class="hero__sub anim d3">
+        <div class="hero__sub anim d3" id="hero-subtitle">
           快速定位高面数模型 · 批量减面 · 清理场景 · <b>一切尽在侧边栏</b>
         </div>
       </div>
       <div class="blender-badge anim scale d4">
-        <div class="blender-badge__label">Compatible</div>
-        <div class="blender-badge__icon">🧊</div>
-        <div class="blender-badge__tags">
+        <div class="blender-badge__label" id="hero-badge-label">Compatible</div>
+        <div class="blender-badge__icon" id="hero-badge-icon">🧊</div>
+        <div class="blender-badge__tags" id="hero-badge-tags">
           <span>Blender 3.0~5.1+</span>
           <span>MIT</span>
           <span>Python</span>
