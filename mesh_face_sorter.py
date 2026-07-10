@@ -1,10 +1,10 @@
 bl_info = {
     "name": "Blender 网格排序器 Mesh Face Sorter",
     "author": "Simiely",
-    "version": (1, 6, 0),
+    "version": (1, 7, 0),
     "blender": (3, 0, 0),
     "location": "3D视图 > 侧边栏(N) > 网格排序器",
-    "description": "按面数/顶点/存储大小排列场景中的网格体，支持孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
+    "description": "按面数/顶点/存储大小排列场景中的网格体，支持隐藏/显示、孤立显示、删除空网格、导出 md 报表、减面修改器（手动刷新 + 进度提示）",
     "warning": "",
     "doc_url": "https://github.com/Simiely/blender-mesh-face-sorter",
     "category": "Mesh",
@@ -13,11 +13,9 @@ bl_info = {
 import bpy
 import datetime
 
-
 # -----------------------------------------------------------------------------
 # 缓存层 — 解决大场景卡顿的关键
 # -----------------------------------------------------------------------------
-
 
 class _Cache:
     """简单的全局缓存。避免 Panel 每帧重新扫描场景。
@@ -39,7 +37,6 @@ class _Cache:
     @classmethod
     def store(cls, stats):
         cls.stats = stats
-
 
 def _scan_meshes(with_progress=False, on_progress=None):
     """扫描所有网格体并收集统计信息（不含排序）。
@@ -76,7 +73,6 @@ def _scan_meshes(with_progress=False, on_progress=None):
         _ScanStatus.finish(len(stats))
     return stats
 
-
 def collect_mesh_stats(sort_by='FACES', descending=True, force=False):
     """获取排序后的网格体统计信息。
 
@@ -96,7 +92,6 @@ def collect_mesh_stats(sort_by='FACES', descending=True, force=False):
     # 复制一份再排序，避免污染缓存原始顺序
     sorted_stats = sorted(stats, key=lambda x: x[_SORT_KEY_MAP[sort_by]], reverse=descending)
     return sorted_stats
-
 
 class _ScanStatus:
     """扫描状态，供 Panel 实时显示进度。"""
@@ -137,7 +132,6 @@ class _ScanStatus:
         """未扫描时的初始状态。"""
         cls.message = "未扫描，请点击「刷新列表」"
 
-
 # 初始化状态
 _ScanStatus.idle()
 
@@ -152,7 +146,6 @@ _SORT_LABELS = {
     'VERTS': "顶点数",
     'SIZE': "存储大小",
 }
-
 
 def _estimate_mesh_size(mesh):
     """估算网格体内存占用（字节）。
@@ -170,14 +163,12 @@ def _estimate_mesh_size(mesh):
         size += len(vc_layer.data) * 16   # RGBA
     return size
 
-
 def format_number(n):
     if n >= 1000000:
         return f"{n / 1000000:.1f}M"
     if n >= 1000:
         return f"{n / 1000:.1f}K"
     return str(n)
-
 
 def format_size(n):
     if n >= 1024 * 1024 * 1024:
@@ -188,14 +179,12 @@ def format_size(n):
         return f"{n / 1024:.1f} KB"
     return f"{n} B"
 
-
 def _display_width(s):
     """估算字符串显示宽度：CJK 字符算 2，其余算 1。"""
     w = 0
     for ch in s:
         w += 2 if ord(ch) > 0x2E80 else 1
     return w
-
 
 def _truncate_name(name, max_width=40):
     """按显示宽度截断名称，超出部分以省略号代替。"""
@@ -211,11 +200,9 @@ def _truncate_name(name, max_width=40):
         w += cw
     return ''.join(result) + "…"
 
-
 # -----------------------------------------------------------------------------
 # Operators - 基础操作
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortRefresh(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.refresh"
@@ -246,7 +233,6 @@ class MESH_OT_FaceSortRefresh(bpy.types.Operator):
         self.report({'INFO'}, f"扫描完成：{len(stats)} 个网格体")
         return {'FINISHED'}
 
-
 class MESH_OT_FaceSortSelect(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.select_object"
     bl_label = "选中物体"
@@ -264,7 +250,6 @@ class MESH_OT_FaceSortSelect(bpy.types.Operator):
             bpy.context.view_layer.objects.active = obj
         return {'FINISHED'}
 
-
 class MESH_OT_FaceSortSelectAll(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.select_all"
     bl_label = "选中所有网格体"
@@ -277,11 +262,34 @@ class MESH_OT_FaceSortSelectAll(bpy.types.Operator):
                 obj.select_set(True)
         return {'FINISHED'}
 
+# -----------------------------------------------------------------------------
+# Operators - 隐藏/显示切换
+# -----------------------------------------------------------------------------
+
+class MESH_OT_FaceSortToggleHide(bpy.types.Operator):
+    """切换物体的隐藏/显示状态（视图层级别，对应 Outliner 中的眼睛图标）"""
+    bl_idname = "mesh_face_sorter.toggle_hide"
+    bl_label = "隐藏/显示"
+    bl_description = "切换该物体在当前视图层中的隐藏/显示状态"
+
+    object_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.object_name)
+        if not obj or obj.type != 'MESH':
+            return {'CANCELLED'}
+        # 切换当前视图层的隐藏状态
+        is_hidden = obj.hide_get()
+        obj.hide_set(not is_hidden)
+        # 如果取消隐藏，同时确保物体在所有视图中可见
+        if is_hidden:
+            obj.hide_viewport = False
+        _Cache.invalidate()
+        return {'FINISHED'}
 
 # -----------------------------------------------------------------------------
 # Operators - 孤立显示
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortIsolate(bpy.types.Operator):
     """孤立显示：仅显示该物体，隐藏其他所有网格体"""
@@ -304,7 +312,6 @@ class MESH_OT_FaceSortIsolate(bpy.types.Operator):
         self.report({'INFO'}, f"已孤立显示：{target.name}")
         return {'FINISHED'}
 
-
 class MESH_OT_FaceSortShowAll(bpy.types.Operator):
     """取消所有网格体的隐藏"""
     bl_idname = "mesh_face_sorter.show_all"
@@ -321,11 +328,9 @@ class MESH_OT_FaceSortShowAll(bpy.types.Operator):
         self.report({'INFO'}, f"已显示 {count} 个隐藏的网格体")
         return {'FINISHED'}
 
-
 # -----------------------------------------------------------------------------
 # Operators - 删除无面网格体
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortDeleteEmpty(bpy.types.Operator):
     """删除所有面数为 0 的空网格体"""
@@ -366,11 +371,9 @@ class MESH_OT_FaceSortDeleteEmpty(bpy.types.Operator):
         )
         self.layout.label(text=f"将删除 {empty_count} 个面数为 0 的网格体")
 
-
 # -----------------------------------------------------------------------------
 # Operators - 导出 Markdown 报表
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortExportMd(bpy.types.Operator):
     """导出当前列表为 Markdown 报表"""
@@ -441,14 +444,11 @@ class MESH_OT_FaceSortExportMd(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-
 # -----------------------------------------------------------------------------
 # Operators - Decimate 修改器
 # -----------------------------------------------------------------------------
 
-
 DECIMATE_MODIFIER_NAME = "Decimate"
-
 
 def add_decimate_to_object(obj, ratio=0.5):
     if obj.type != 'MESH':
@@ -461,7 +461,6 @@ def add_decimate_to_object(obj, ratio=0.5):
     mod.ratio = ratio
     mod.use_collapse_triangulate = False
     return True, mod
-
 
 class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate"
@@ -494,7 +493,6 @@ class MESH_OT_FaceSortAddDecimate(bpy.types.Operator):
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 
-
 class MESH_OT_FaceSortAddDecimateToObject(bpy.types.Operator):
     bl_idname = "mesh_face_sorter.add_decimate_to_object"
     bl_label = "添加减面"
@@ -515,11 +513,9 @@ class MESH_OT_FaceSortAddDecimateToObject(bpy.types.Operator):
             self.report({'INFO'}, f"已存在减面修改器，跳过：{obj.name}")
         return {'FINISHED'}
 
-
 # -----------------------------------------------------------------------------
 # Operators - 应用减面修改器
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortApplyDecimate(bpy.types.Operator):
     """应用当前选中网格体的减面修改器"""
@@ -561,11 +557,9 @@ class MESH_OT_FaceSortApplyDecimate(bpy.types.Operator):
         _Cache.invalidate()
         return {'FINISHED'}
 
-
 # -----------------------------------------------------------------------------
 # Operators - 清理未使用数据
 # -----------------------------------------------------------------------------
-
 
 class MESH_OT_FaceSortPurgeOrphanData(bpy.types.Operator):
     """清理场景中未使用的数据块（网格、材质、贴图等）"""
@@ -580,11 +574,9 @@ class MESH_OT_FaceSortPurgeOrphanData(bpy.types.Operator):
         _Cache.invalidate()
         return {'FINISHED'}
 
-
 # -----------------------------------------------------------------------------
 # Panel
 # -----------------------------------------------------------------------------
-
 
 class MESH_PT_FaceSortPanel(bpy.types.Panel):
     bl_label = "面数排序"
@@ -701,7 +693,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
         # 列表 — 限制最大显示数量，避免超多物体时 UI 卡顿
         # 布局：名称（左侧弹性，占大部分） | 面数+按钮（右侧紧凑组，整体右对齐贴边）
         MAX_DISPLAY = 500
-        NAME_FACTOR = 0.76   # 名称占 76%，右侧 24% 给"面数+按钮"（收窄面数区，减小名称与面数间距）
+        NAME_FACTOR = 0.72   # 名称占 72%，右侧 28% 给"面数+隐藏+独显+减面"（多了隐藏按钮，适当加宽右侧）
 
         box = layout.box()
         box.enabled = not is_scanning
@@ -754,6 +746,7 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             op_name.object_name = s["name"]
 
             # 右侧：面数 + 按钮组（紧凑排列，整体右对齐贴右边）
+            # 按钮顺序：面数 | 隐藏/显示 | 独显 | 减面
             right = row.row(align=True)
             right.alignment = 'RIGHT'
             if sort_by == 'FACES':
@@ -763,12 +756,24 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             else:
                 right.label(text=format_size(s["size"]))
             right.separator(factor=0.5)   # 面数与按钮间留小间距
+
+            # --- 隐藏/显示切换按钮 ---
+            op_hide = right.operator(
+                "mesh_face_sorter.toggle_hide",
+                text="",
+                icon='HIDE_OFF' if not is_hidden else 'HIDE_ON',
+            )
+            op_hide.object_name = s["name"]
+
+            # --- 孤立显示按钮 ---
             op_iso = right.operator(
                 "mesh_face_sorter.isolate",
                 text="",
                 icon='HIDE_OFF' if not is_hidden else 'HIDE_ON',
             )
             op_iso.object_name = s["name"]
+
+            # --- 减面修改器按钮 ---
             op_dec = right.operator(
                 "mesh_face_sorter.add_decimate_to_object",
                 text="",
@@ -785,27 +790,24 @@ class MESH_PT_FaceSortPanel(bpy.types.Panel):
             col.label(text="点击「刷新列表」可重新排序，或使用「导出 md 报表」查看全部",
                       icon='INFO')
 
-
 # -----------------------------------------------------------------------------
 # 应用处理器 — 仅在加载新文件时清缓存（不自动监听场景变化）
 # -----------------------------------------------------------------------------
-
 
 @bpy.app.handlers.persistent
 def _on_load_post(dummy):
     """文件加载时清缓存，下次打开面板会重新扫描。"""
     _Cache.invalidate()
 
-
 # -----------------------------------------------------------------------------
 # 注册
 # -----------------------------------------------------------------------------
-
 
 classes = (
     MESH_OT_FaceSortRefresh,
     MESH_OT_FaceSortSelect,
     MESH_OT_FaceSortSelectAll,
+    MESH_OT_FaceSortToggleHide,
     MESH_OT_FaceSortIsolate,
     MESH_OT_FaceSortShowAll,
     MESH_OT_FaceSortDeleteEmpty,
@@ -816,7 +818,6 @@ classes = (
     MESH_OT_FaceSortPurgeOrphanData,
     MESH_PT_FaceSortPanel,
 )
-
 
 def register():
     for cls in classes:
@@ -845,7 +846,6 @@ def register():
     # 注册应用处理器（仅文件加载时清缓存）
     bpy.app.handlers.load_post.append(_on_load_post)
 
-
 def unregister():
     # 移除应用处理器
     if _on_load_post in bpy.app.handlers.load_post:
@@ -855,7 +855,6 @@ def unregister():
     del bpy.types.Scene.mesh_face_sorter_decimate_ratio
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-
 
 if __name__ == "__main__":
     register()
