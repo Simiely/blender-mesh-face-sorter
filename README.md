@@ -124,6 +124,12 @@ A：基于顶点数、边数、面数、循环数、UV 层、顶点色层估算�
 
 `偏好设置` → `插件` → 搜索 `Blender Mesh Face Sorter` → 取消勾选 → `Remove`
 
+## 文档
+
+- **更新日志**：见 [CHANGELOG.md](./CHANGELOG.md)
+- **开发文档**：见 [DEVELOPMENT.md](./DEVELOPMENT.md)（架构 + 关键决策 + 踩坑记录）
+- **项目规则（AI 用）**：见 [AGENTS.md](./AGENTS.md)（技术栈、关键坑、约定）
+
 ## 反馈
 
 - 仓库：https://github.com/Simiely/blender-mesh-face-sorter
