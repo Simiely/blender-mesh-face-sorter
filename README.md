@@ -1,10 +1,13 @@
 > [!IMPORTANT]
-> ## 📦 本仓库已归档 —— 请到统一插件集下载
+> ## 📦 本仓库为历史留档 —— 最新版请到统一插件集获取
 > 本插件已迁入 **[Simiely/blender-addons](https://github.com/Simiely/blender-addons)**，
-> 后续的版本更新与问题修复都在那边统一维护，**本仓库只读、不再更新**。
+> 后续的版本更新与问题修复**只在那边进行**，本仓库**自 2026-10-02 起不再维护**。
 >
 > 最新版下载：https://github.com/Simiely/blender-addons/tree/main/addons
 >
+> 本仓库**保留历史代码与文档作为参考**，其插件文件与插件集内的对应文件**逐字节一致**；
+> 请不要在此提交 Issue / PR —— 那边才是唯一维护处。
+
 # Blender Mesh Face Sorter
 
 > Blender 插件：按面数/顶点/存储大小排列场景中所有网格体，快速定位高面数模型、批量减面、清理场景。
